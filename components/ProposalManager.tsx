@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Eye, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Eye, Plus, Printer, Trash2 } from "lucide-react";
 import type { Proposal, ProposalInput, ProposalItem } from "@/lib/types";
 import { formatCurrency, today } from "@/lib/format";
 
@@ -21,7 +21,7 @@ const blankProposal = (): ProposalInput => ({
   project_period: "",
   total_amount: 0,
   related_plan: "",
-  org_name: "협동조합 소이랩",
+  org_name: "협동조합 soilab",
   submission_date: today(),
   items: [emptyItem()],
   status: "draft",
@@ -162,9 +162,13 @@ export default function ProposalManager() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Link className="btn btn-secondary !px-3 !py-2" href={`/proposals/preview/${item.id}`} target="_blank">
                         <Eye className="h-4 w-4" />
+                      </Link>
+                      <Link className="btn btn-primary !px-3 !py-2" href={`/?fromProposalId=${item.id}`}>
+                        <ArrowRightLeft className="h-4 w-4" />
+                        결의서 작성
                       </Link>
                       <button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>
                         수정

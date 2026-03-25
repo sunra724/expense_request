@@ -33,6 +33,7 @@ export type Proposal = {
 
 export type Expenditure = {
   id: number;
+  proposal_id: number | null;
   doc_number: string;
   project_name: string;
   expense_category: string;

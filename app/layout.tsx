@@ -14,7 +14,7 @@ const sans = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "소이랩 문서 관리 시스템",
+  title: "soilab 문서 관리 시스템",
   description: "지출결의서와 지출품의서를 한 앱에서 관리합니다.",
 };
 

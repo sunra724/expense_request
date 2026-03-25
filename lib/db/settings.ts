@@ -11,7 +11,7 @@ function normalizeSettings(row: Record<string, unknown>): StampSettings {
     staff_stamp: String(row.staff_stamp ?? "/stamps/staff.png"),
     manager_stamp: String(row.manager_stamp ?? "/stamps/manager.png"),
     chairperson_stamp: String(row.chairperson_stamp ?? "/stamps/chairperson.png"),
-    org_name: String(row.org_name ?? "협동조합 소이랩"),
+    org_name: String(row.org_name ?? "협동조합 soilab"),
     updated_at: String(row.updated_at ?? ""),
   };
 }

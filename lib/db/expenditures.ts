@@ -12,6 +12,7 @@ import {
 function normalizeExpenditure(row: Record<string, unknown>): Expenditure {
   return {
     id: Number(row.id),
+    proposal_id: row.proposal_id == null ? null : Number(row.proposal_id),
     doc_number: String(row.doc_number ?? ""),
     project_name: String(row.project_name ?? ""),
     expense_category: String(row.expense_category ?? ""),

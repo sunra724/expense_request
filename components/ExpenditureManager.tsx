@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Eye, Plus, Printer, Trash2 } from "lucide-react";
-import type { Expenditure, ExpenditureInput, ExpenditureItem } from "@/lib/types";
+import type { Expenditure, ExpenditureInput, ExpenditureItem, Proposal } from "@/lib/types";
 import { formatCurrency, today } from "@/lib/format";
 
 const emptyItem = (): ExpenditureItem => ({ description: "", amount: 0, note: "" });
 
 const blankForm = (): ExpenditureInput => ({
+  proposal_id: null,
   doc_number: "",
   project_name: "",
   expense_category: "",
@@ -25,12 +26,18 @@ const blankForm = (): ExpenditureInput => ({
   status: "draft",
 });
 
-export default function ExpenditureManager() {
+export default function ExpenditureManager({
+  initialFromProposalId = null,
+}: {
+  initialFromProposalId?: string | null;
+}) {
   const [items, setItems] = useState<Expenditure[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [form, setForm] = useState<ExpenditureInput>(blankForm());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
+  const [linkedProposalName, setLinkedProposalName] = useState("");
+  const [prefilledFromProposalId, setPrefilledFromProposalId] = useState<number | null>(null);
 
   async function fetchList() {
     const response = await fetch("/api/expenditures");
@@ -49,6 +56,51 @@ export default function ExpenditureManager() {
     };
   }, []);
 
+  useEffect(() => {
+    const fromProposalId = initialFromProposalId;
+    if (!fromProposalId || editingId) return;
+    if (prefilledFromProposalId === Number(fromProposalId)) return;
+
+    let active = true;
+    fetch(`/api/proposals/${fromProposalId}`)
+      .then((response) => response.json())
+      .then((proposal: Proposal) => {
+        if (!active || !proposal?.id) return;
+        const drafted: ExpenditureInput = {
+          proposal_id: proposal.id,
+          doc_number: "",
+          project_name: proposal.project_name,
+          expense_category: proposal.items[0]?.expense_category ?? "",
+          issue_date: today(),
+          record_date: today(),
+          total_amount: proposal.total_amount,
+          payee_address: "",
+          payee_company: "",
+          payee_name: "",
+          payment_method: "계좌이체",
+          receipt_date: today(),
+          receipt_name: "",
+          items: proposal.items.length
+            ? proposal.items.map((item) => ({
+                description: item.description,
+                amount: item.estimated_amount,
+                note: item.note,
+              }))
+            : [emptyItem()],
+          status: "draft",
+        };
+        setForm(drafted);
+        setLinkedProposalName(proposal.project_name);
+        setPrefilledFromProposalId(proposal.id);
+        setEditingId(null);
+        setOpen(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [editingId, initialFromProposalId, prefilledFromProposalId]);
+
   const totalAmount = useMemo(
     () => form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     [form.items],
@@ -59,6 +111,7 @@ export default function ExpenditureManager() {
     const data = await response.json();
     setEditingId(id);
     setForm(data);
+    setLinkedProposalName(data.proposal_id ? data.project_name : "");
     setOpen(true);
   }
 
@@ -72,6 +125,7 @@ export default function ExpenditureManager() {
     setOpen(false);
     setEditingId(null);
     setForm(blankForm());
+    setLinkedProposalName("");
     fetchList();
   }
 
@@ -90,7 +144,7 @@ export default function ExpenditureManager() {
           <div className="mb-2 text-sm uppercase tracking-[0.24em] text-slate-500">Resolution Workspace</div>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">지출결의서 관리</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            기존 지출결의서 흐름을 복구하는 기본 화면입니다. Supabase 키를 넣으면 실제 운영 DB와 연결됩니다.
+            품의서 승인 후 실제 집행 내역을 정리하는 후속 문서입니다. Supabase 키를 넣으면 실제 운영 DB와 연결됩니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -127,6 +181,7 @@ export default function ExpenditureManager() {
               <tr>
                 <th className="px-4 py-3">선택</th>
                 <th className="px-4 py-3">사업명</th>
+                <th className="px-4 py-3">연계 품의서</th>
                 <th className="px-4 py-3">비목</th>
                 <th className="px-4 py-3 text-right">금액</th>
                 <th className="px-4 py-3">상태</th>
@@ -150,6 +205,15 @@ export default function ExpenditureManager() {
                     />
                   </td>
                   <td className="px-4 py-3 font-medium">{item.project_name}</td>
+                  <td className="px-4 py-3">
+                    {item.proposal_id ? (
+                      <Link className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline" href={`/proposals/preview/${item.proposal_id}`} target="_blank">
+                        품의서 #{item.proposal_id}
+                      </Link>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td className="px-4 py-3">{item.expense_category || "-"}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(item.total_amount)}원</td>
                   <td className="px-4 py-3">
@@ -184,6 +248,12 @@ export default function ExpenditureManager() {
               <div>
                 <div className="text-sm text-slate-500">지출결의서</div>
                 <h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>
+                {form.proposal_id ? (
+                  <p className="mt-2 text-sm text-teal-700">
+                    연결된 지출품의서 #{form.proposal_id}
+                    {linkedProposalName ? ` · ${linkedProposalName}` : ""}
+                  </p>
+                ) : null}
               </div>
               <button className="btn btn-secondary" onClick={() => setOpen(false)}>
                 닫기
@@ -191,6 +261,20 @@ export default function ExpenditureManager() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
+              <label className="block text-sm">
+                연계 품의서 ID
+                <input
+                  className="field mt-2"
+                  type="number"
+                  value={form.proposal_id ?? ""}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      proposal_id: event.target.value ? Number(event.target.value) : null,
+                    })
+                  }
+                />
+              </label>
               {[
                 { key: "project_name", label: "단위사업명" },
                 { key: "doc_number", label: "문서번호" },

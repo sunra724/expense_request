@@ -31,7 +31,7 @@ export default function SettingsPage() {
         <div className="mb-2 text-sm uppercase tracking-[0.24em] text-slate-500">Settings</div>
         <h1 className="font-[family-name:var(--font-display)] text-4xl">결재 및 기관 정보</h1>
         <p className="mt-2 text-sm text-slate-600">
-          현재 기본 서명은 `협동조합 소이랩 (인)` 기준입니다. 결재자 명칭과 도장 경로를 여기서 맞춰주세요.
+          현재 기본 서명은 `협동조합 soilab (인)` 기준입니다. 결재자 명칭과 도장 경로를 여기서 맞춰주세요.
         </p>
       </section>
 

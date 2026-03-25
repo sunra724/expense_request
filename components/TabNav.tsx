@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { ClipboardList, FileText, Settings } from "lucide-react";
 
 const tabs = [
-  { href: "/", label: "지출결의서", icon: FileText },
   { href: "/proposals", label: "지출품의서", icon: ClipboardList },
+  { href: "/", label: "지출결의서", icon: FileText },
 ];
 
 export default function TabNav() {
@@ -19,8 +19,8 @@ export default function TabNav() {
     >
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-5 py-4">
         <div>
-          <div className="font-[family-name:var(--font-display)] text-2xl">Soylab Docs</div>
-          <div className="text-xs text-white/60">협동조합 소이랩 문서 관리 시스템</div>
+          <div className="font-[family-name:var(--font-display)] text-2xl">Soilab Docs</div>
+          <div className="text-xs text-white/60">협동조합 soilab 문서 관리 시스템</div>
         </div>
 
         <nav className="flex items-center gap-2 rounded-full bg-white/8 p-1">

@@ -1,5 +1,24 @@
+create table if not exists proposals (
+  id bigint generated always as identity primary key,
+  doc_number text default '',
+  fund_type text not null default 'grant',
+  project_name text default '',
+  project_period text default '',
+  total_amount integer default 0,
+  related_plan text default '',
+  org_name text default '협동조합 soilab',
+  submission_date date,
+  items jsonb not null default '[]'::jsonb,
+  status text not null default 'draft',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint proposals_fund_type_check check (fund_type in ('grant', 'self', 'both')),
+  constraint proposals_status_check check (status in ('draft', 'finalized'))
+);
+
 create table if not exists expenditures (
   id bigint generated always as identity primary key,
+  proposal_id bigint references proposals(id) on delete set null,
   doc_number text default '',
   project_name text default '',
   expense_category text default '',
@@ -18,24 +37,6 @@ create table if not exists expenditures (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists proposals (
-  id bigint generated always as identity primary key,
-  doc_number text default '',
-  fund_type text not null default 'grant',
-  project_name text default '',
-  project_period text default '',
-  total_amount integer default 0,
-  related_plan text default '',
-  org_name text default '협동조합 소이랩',
-  submission_date date,
-  items jsonb not null default '[]'::jsonb,
-  status text not null default 'draft',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint proposals_fund_type_check check (fund_type in ('grant', 'self', 'both')),
-  constraint proposals_status_check check (status in ('draft', 'finalized'))
-);
-
 create table if not exists stamp_settings (
   id integer primary key default 1,
   staff_name text default '담당자',
@@ -44,7 +45,7 @@ create table if not exists stamp_settings (
   staff_stamp text default '/stamps/staff.png',
   manager_stamp text default '/stamps/manager.png',
   chairperson_stamp text default '/stamps/chairperson.png',
-  org_name text default '협동조합 소이랩',
+  org_name text default '협동조합 soilab',
   updated_at timestamptz not null default now()
 );
 

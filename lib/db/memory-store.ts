@@ -20,7 +20,7 @@ let settings: StampSettings = {
   staff_stamp: "/stamps/staff.png",
   manager_stamp: "/stamps/manager.png",
   chairperson_stamp: "/stamps/chairperson.png",
-  org_name: "협동조합 소이랩",
+  org_name: "협동조합 soilab",
   updated_at: now(),
 };
 
@@ -33,7 +33,7 @@ let proposals: Proposal[] = [
     project_period: "2026.04.02 ~ 2026.04.03",
     total_amount: 950000,
     related_plan: "사업 운영 계획서 1부. 끝.",
-    org_name: "협동조합 소이랩",
+    org_name: "협동조합 soilab",
     submission_date: today(),
     items: [
       {
@@ -60,6 +60,7 @@ let proposals: Proposal[] = [
 let expenditures: Expenditure[] = [
   {
     id: 1,
+    proposal_id: 1,
     doc_number: "E-2026-001",
     project_name: "청년도전지원사업 워크숍",
     expense_category: "운영비",
@@ -67,7 +68,7 @@ let expenditures: Expenditure[] = [
     record_date: today(),
     total_amount: 480000,
     payee_address: "서울시 마포구",
-    payee_company: "소이랩 협력사",
+    payee_company: "soilab 협력사",
     payee_name: "홍길동",
     payment_method: "계좌이체",
     receipt_date: today(),
@@ -106,6 +107,9 @@ export function updateProposalMemory(id: number, input: ProposalInput) {
 
 export function deleteProposalMemory(id: number) {
   proposals = proposals.filter((proposal) => proposal.id !== id);
+  expenditures = expenditures.map((item) =>
+    item.proposal_id === id ? { ...item, proposal_id: null, updated_at: now() } : item,
+  );
 }
 
 export function batchProposalMemory(ids: number[]) {

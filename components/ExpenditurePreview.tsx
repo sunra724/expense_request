@@ -19,6 +19,7 @@ export default function ExpenditurePreview({
         <section className="rounded-2xl border border-slate-200 p-4 text-sm">
           <div className="mb-3 font-semibold">기본 정보</div>
           <div className="space-y-2">
+            <div>연계 품의서: {expenditure.proposal_id ? `#${expenditure.proposal_id}` : "-"}</div>
             <div>단위사업명: {expenditure.project_name || "-"}</div>
             <div>발의일: {expenditure.issue_date || "-"}</div>
             <div>회계기록일: {expenditure.record_date || "-"}</div>
