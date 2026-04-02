@@ -1,4 +1,8 @@
 import { today } from "@/lib/format";
+import {
+  createEvidenceAttachmentSheet,
+  createPhotoAttachmentSheet,
+} from "@/lib/attachment-sheets";
 import type {
   Expenditure,
   ExpenditureInput,
@@ -77,6 +81,39 @@ let expenditures: Expenditure[] = [
       { description: "진행물 제작", amount: 180000, note: "" },
       { description: "회의 다과", amount: 300000, note: "" },
     ],
+    evidence_sheet: {
+      title: "청년도전지원사업 워크숍 증빙서류 첨부철",
+      submission_note: "카드 전표와 간이영수증을 함께 보관합니다.",
+      items: [
+        {
+          id: "evidence-demo-1",
+          evidence_type: "card_slip",
+          title: "회의 다과 카드 전표",
+          issuer: "soilab 협력사",
+          issued_on: today(),
+          amount: 300000,
+          related_item: "회의 다과",
+          file_note: "실물 원본 첨부",
+          note: "",
+        },
+      ],
+    },
+    photo_sheet: {
+      title: "청년도전지원사업 워크숍 증빙사진 첨부철",
+      submission_note: "행사 진행 사진을 순서대로 첨부합니다.",
+      items: [
+        {
+          id: "photo-demo-1",
+          title: "워크숍 현장 전경",
+          shot_date: today(),
+          location: "서울시 마포구",
+          description: "프로그램 진행 시작 전 참여자 착석 모습",
+          related_item: "행사 운영",
+          file_note: "사진 파일 별도 보관",
+          note: "",
+        },
+      ],
+    },
     status: "finalized",
     created_at: now(),
     updated_at: now(),
@@ -125,7 +162,14 @@ export function getExpenditureMemory(id: number) {
 }
 
 export function createExpenditureMemory(input: ExpenditureInput) {
-  const created: Expenditure = { ...input, id: expenditureId++, created_at: now(), updated_at: now() };
+  const created: Expenditure = {
+    ...input,
+    evidence_sheet: input.evidence_sheet ?? createEvidenceAttachmentSheet(input.project_name),
+    photo_sheet: input.photo_sheet ?? createPhotoAttachmentSheet(input.project_name),
+    id: expenditureId++,
+    created_at: now(),
+    updated_at: now(),
+  };
   expenditures = [created, ...expenditures];
   return created;
 }
@@ -133,7 +177,14 @@ export function createExpenditureMemory(input: ExpenditureInput) {
 export function updateExpenditureMemory(id: number, input: ExpenditureInput) {
   const current = getExpenditureMemory(id);
   if (!current) return null;
-  const updated: Expenditure = { ...current, ...input, id, updated_at: now() };
+  const updated: Expenditure = {
+    ...current,
+    ...input,
+    evidence_sheet: input.evidence_sheet ?? current.evidence_sheet,
+    photo_sheet: input.photo_sheet ?? current.photo_sheet,
+    id,
+    updated_at: now(),
+  };
   expenditures = expenditures.map((item) => (item.id === id ? updated : item));
   return updated;
 }

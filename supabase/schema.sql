@@ -32,10 +32,18 @@ create table if not exists expenditures (
   receipt_date date,
   receipt_name text default '',
   items jsonb not null default '[]'::jsonb,
+  evidence_sheet jsonb not null default '{"title":"증빙서류 첨부철","submission_note":"","items":[]}'::jsonb,
+  photo_sheet jsonb not null default '{"title":"증빙사진 첨부철","submission_note":"","items":[]}'::jsonb,
   status text not null default 'draft',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table expenditures
+add column if not exists evidence_sheet jsonb not null default '{"title":"증빙서류 첨부철","submission_note":"","items":[]}'::jsonb;
+
+alter table expenditures
+add column if not exists photo_sheet jsonb not null default '{"title":"증빙사진 첨부철","submission_note":"","items":[]}'::jsonb;
 
 create table if not exists stamp_settings (
   id integer primary key default 1,

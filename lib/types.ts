@@ -1,5 +1,12 @@
 export type DocumentStatus = "draft" | "finalized";
 export type FundType = "grant" | "self" | "both";
+export type EvidenceDocumentType =
+  | "card_slip"
+  | "tax_invoice"
+  | "cash_receipt"
+  | "receipt"
+  | "transaction_statement"
+  | "other";
 
 export type ProposalItem = {
   expense_category: string;
@@ -13,6 +20,41 @@ export type ExpenditureItem = {
   description: string;
   amount: number;
   note: string;
+};
+
+export type EvidenceAttachmentItem = {
+  id: string;
+  evidence_type: EvidenceDocumentType;
+  title: string;
+  issuer: string;
+  issued_on: string;
+  amount: number;
+  related_item: string;
+  file_note: string;
+  note: string;
+};
+
+export type EvidenceAttachmentSheet = {
+  title: string;
+  submission_note: string;
+  items: EvidenceAttachmentItem[];
+};
+
+export type PhotoAttachmentItem = {
+  id: string;
+  title: string;
+  shot_date: string;
+  location: string;
+  description: string;
+  related_item: string;
+  file_note: string;
+  note: string;
+};
+
+export type PhotoAttachmentSheet = {
+  title: string;
+  submission_note: string;
+  items: PhotoAttachmentItem[];
 };
 
 export type Proposal = {
@@ -47,6 +89,8 @@ export type Expenditure = {
   receipt_date: string;
   receipt_name: string;
   items: ExpenditureItem[];
+  evidence_sheet: EvidenceAttachmentSheet;
+  photo_sheet: PhotoAttachmentSheet;
   status: DocumentStatus;
   created_at: string;
   updated_at: string;

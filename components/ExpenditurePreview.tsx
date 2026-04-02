@@ -1,4 +1,5 @@
 import type { Expenditure, StampSettings } from "@/lib/types";
+import { countFilledEvidenceItems, countFilledPhotoItems } from "@/lib/attachment-sheets";
 import { formatCurrency } from "@/lib/format";
 
 export default function ExpenditurePreview({
@@ -79,6 +80,17 @@ export default function ExpenditurePreview({
         <div>수취인: {expenditure.payee_name || "-"}</div>
         <div>주소: {expenditure.payee_address || "-"}</div>
         <div>영수증: {expenditure.receipt_name || "-"}</div>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-slate-200 p-4 text-sm">
+        <div className="mb-3 font-semibold">첨부철 연동 현황</div>
+        <div className="space-y-2">
+          <div>증빙서류 첨부철: {countFilledEvidenceItems(expenditure.evidence_sheet)}건</div>
+          <div>증빙사진 첨부철: {countFilledPhotoItems(expenditure.photo_sheet)}건</div>
+          <div className="text-slate-500">
+            카드 전표, 세금계산서, 현금영수증, 영수증과 사진대지는 결의서와 연결된 첨부철 화면에서 관리합니다.
+          </div>
+        </div>
       </section>
     </div>
   );

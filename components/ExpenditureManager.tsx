@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Eye, Plus, Printer, Trash2 } from "lucide-react";
+import {
+  countFilledEvidenceItems,
+  countFilledPhotoItems,
+  createEvidenceAttachmentSheet,
+  createPhotoAttachmentSheet,
+} from "@/lib/attachment-sheets";
 import type { Expenditure, ExpenditureInput, ExpenditureItem, Proposal } from "@/lib/types";
 import { formatCurrency, today } from "@/lib/format";
 
@@ -23,6 +29,8 @@ const blankForm = (): ExpenditureInput => ({
   receipt_date: today(),
   receipt_name: "",
   items: [emptyItem()],
+  evidence_sheet: createEvidenceAttachmentSheet(),
+  photo_sheet: createPhotoAttachmentSheet(),
   status: "draft",
 });
 
@@ -87,6 +95,8 @@ export default function ExpenditureManager({
                 note: item.note,
               }))
             : [emptyItem()],
+          evidence_sheet: createEvidenceAttachmentSheet(proposal.project_name),
+          photo_sheet: createPhotoAttachmentSheet(proposal.project_name),
           status: "draft",
         };
         setForm(drafted);
@@ -204,7 +214,12 @@ export default function ExpenditureManager({
                       }
                     />
                   </td>
-                  <td className="px-4 py-3 font-medium">{item.project_name}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{item.project_name}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      증빙 {countFilledEvidenceItems(item.evidence_sheet)}건 · 사진 {countFilledPhotoItems(item.photo_sheet)}건
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     {item.proposal_id ? (
                       <Link className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline" href={`/proposals/preview/${item.proposal_id}`} target="_blank">
@@ -225,6 +240,12 @@ export default function ExpenditureManager({
                     <div className="flex gap-2">
                       <Link className="btn btn-secondary !px-3 !py-2" href={`/preview/${item.id}`} target="_blank">
                         <Eye className="h-4 w-4" />
+                      </Link>
+                      <Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/evidence`}>
+                        증빙
+                      </Link>
+                      <Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/photos`}>
+                        사진
                       </Link>
                       <button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>
                         수정

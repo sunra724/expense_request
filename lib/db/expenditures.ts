@@ -1,4 +1,8 @@
 import { getSupabaseAdmin, hasSupabaseEnv } from "@/lib/supabase";
+import {
+  normalizeEvidenceAttachmentSheet,
+  normalizePhotoAttachmentSheet,
+} from "@/lib/attachment-sheets";
 import type { Expenditure, ExpenditureInput } from "@/lib/types";
 import {
   batchExpenditureMemory,
@@ -10,11 +14,12 @@ import {
 } from "@/lib/db/memory-store";
 
 function normalizeExpenditure(row: Record<string, unknown>): Expenditure {
+  const projectName = String(row.project_name ?? "");
   return {
     id: Number(row.id),
     proposal_id: row.proposal_id == null ? null : Number(row.proposal_id),
     doc_number: String(row.doc_number ?? ""),
-    project_name: String(row.project_name ?? ""),
+    project_name: projectName,
     expense_category: String(row.expense_category ?? ""),
     issue_date: String(row.issue_date ?? ""),
     record_date: String(row.record_date ?? ""),
@@ -26,6 +31,8 @@ function normalizeExpenditure(row: Record<string, unknown>): Expenditure {
     receipt_date: String(row.receipt_date ?? ""),
     receipt_name: String(row.receipt_name ?? ""),
     items: Array.isArray(row.items) ? (row.items as Expenditure["items"]) : [],
+    evidence_sheet: normalizeEvidenceAttachmentSheet(row.evidence_sheet, projectName),
+    photo_sheet: normalizePhotoAttachmentSheet(row.photo_sheet, projectName),
     status: (row.status as Expenditure["status"]) ?? "draft",
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
