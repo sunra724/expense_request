@@ -8,11 +8,12 @@ import { createDefaultProposalGuidelineFields } from "@/lib/document-defaults";
 import { applyDocumentPrefix } from "@/lib/document-number";
 import { formatCurrency, today } from "@/lib/format";
 import {
+  buildEvidenceChecklist,
   budgetScopeLabel,
   budgetScopeOptions,
-  defaultEvidenceChecklist,
   paymentMethodLabel,
   paymentMethodOptions,
+  requiresRecipientIdentityCopy,
 } from "@/lib/guideline";
 import type { Organization, Project, Proposal, ProposalInput, ProposalItem } from "@/lib/types";
 
@@ -58,15 +59,22 @@ function normalizeProposalPayload(form: ProposalInput, totalAmount: number): Pro
   const supplyAmount = form.supply_amount || Math.max(totalAmount - form.vat_amount, 0);
   const eligibleAmount =
     form.eligible_amount || Math.max(totalAmount - (form.requires_foundation_approval ? 0 : form.vat_amount), 0);
+  const requiredChecklist = buildEvidenceChecklist(form.payment_method, {
+    budgetItem: form.budget_item,
+    expenseCategory: form.items.map((item) => item.expense_category).join(" "),
+    vendorBusinessNumber: form.vendor_business_number,
+    vendorName: form.vendor_name,
+  });
+  const checklist = Array.from(
+    new Set([...(form.evidence_checklist.length ? form.evidence_checklist : requiredChecklist), ...requiredChecklist]),
+  );
 
   return {
     ...form,
     total_amount: totalAmount,
     supply_amount: supplyAmount,
     eligible_amount: eligibleAmount,
-    evidence_checklist: form.evidence_checklist.length
-      ? form.evidence_checklist
-      : defaultEvidenceChecklist(form.payment_method),
+    evidence_checklist: checklist,
     doc_number: applyDocumentPrefix(form.doc_number, "proposal", form.budget_scope, form.submission_date),
   };
 }
@@ -123,6 +131,31 @@ export default function ProposalManager() {
     () => form.items.reduce((sum, item) => sum + Number(item.estimated_amount || 0), 0),
     [form.items],
   );
+  const requiresIdentityCopy = useMemo(
+    () =>
+      requiresRecipientIdentityCopy({
+        budgetItem: form.budget_item,
+        expenseCategory: form.items.map((item) => item.expense_category).join(" "),
+        vendorBusinessNumber: form.vendor_business_number,
+        vendorName: form.vendor_name,
+      }),
+    [form.budget_item, form.items, form.vendor_business_number, form.vendor_name],
+  );
+  const displayEvidenceChecklist = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...form.evidence_checklist,
+          ...buildEvidenceChecklist(form.payment_method, {
+            budgetItem: form.budget_item,
+            expenseCategory: form.items.map((item) => item.expense_category).join(" "),
+            vendorBusinessNumber: form.vendor_business_number,
+            vendorName: form.vendor_name,
+          }),
+        ]),
+      ),
+    [form.evidence_checklist, form.payment_method, form.budget_item, form.items, form.vendor_business_number, form.vendor_name],
+  );
 
   const warnings = useMemo(() => {
     const next: string[] = [];
@@ -143,8 +176,12 @@ export default function ProposalManager() {
       next.push("거래처명을 입력해두는 것이 정산에 유리합니다.");
     }
 
+    if (form.payment_method === "account_transfer" && requiresIdentityCopy) {
+      next.push("개인 강사·전문가 계좌이체 건은 신분증 사본과 통장사본을 함께 첨부하세요.");
+    }
+
     return next;
-  }, [form, totalAmount]);
+  }, [form, totalAmount, requiresIdentityCopy]);
 
   async function openForEdit(id: number) {
     const response = await fetch(`/api/proposals/${id}`);
@@ -504,8 +541,14 @@ export default function ProposalManager() {
                     setForm({
                       ...form,
                       payment_method: event.target.value as ProposalInput["payment_method"],
-                      evidence_checklist: defaultEvidenceChecklist(
+                      evidence_checklist: buildEvidenceChecklist(
                         event.target.value as ProposalInput["payment_method"],
+                        {
+                          budgetItem: form.budget_item,
+                          expenseCategory: form.items.map((item) => item.expense_category).join(" "),
+                          vendorBusinessNumber: form.vendor_business_number,
+                          vendorName: form.vendor_name,
+                        },
                       ),
                     })
                   }
@@ -712,7 +755,7 @@ export default function ProposalManager() {
               <EvidenceChecklistSelector
                 title="예상 증빙 체크리스트"
                 description="최종 결의서와 정산 단계에서 필요한 기본 증빙을 미리 선택합니다."
-                selected={form.evidence_checklist}
+                selected={displayEvidenceChecklist}
                 onToggle={toggleChecklist}
               />
             </div>

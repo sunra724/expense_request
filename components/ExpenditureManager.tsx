@@ -14,14 +14,15 @@ import { createDefaultExpenditureGuidelineFields } from "@/lib/document-defaults
 import { applyDocumentPrefix } from "@/lib/document-number";
 import { formatCurrency, today } from "@/lib/format";
 import {
+  buildEvidenceChecklist,
   budgetScopeLabel,
   budgetScopeOptions,
-  defaultEvidenceChecklist,
   evidenceChecklistLabel,
   evidenceTypeLabel,
   evidenceTypeOptions,
   paymentMethodLabel,
   paymentMethodOptions,
+  requiresRecipientIdentityCopy,
 } from "@/lib/guideline";
 import type { Expenditure, ExpenditureInput, ExpenditureItem, Organization, Project, Proposal } from "@/lib/types";
 
@@ -54,9 +55,16 @@ function blankForm(organizations: Organization[], projects: Project[]): Expendit
 }
 
 function normalizePayload(form: ExpenditureInput, totalAmount: number): ExpenditureInput {
-  const checklist = form.evidence_checklist.length
-    ? form.evidence_checklist
-    : defaultEvidenceChecklist(form.payment_method);
+  const requiredChecklist = buildEvidenceChecklist(form.payment_method, {
+    budgetItem: form.budget_item,
+    expenseCategory: form.expense_category,
+    vendorBusinessNumber: form.vendor_business_number,
+    vendorName: form.payee_company,
+    payeeName: form.payee_name,
+  });
+  const checklist = Array.from(
+    new Set([...(form.evidence_checklist.length ? form.evidence_checklist : requiredChecklist), ...requiredChecklist]),
+  );
   return {
     ...form,
     total_amount: totalAmount,
@@ -86,17 +94,45 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
   const projects = context.projects;
   const availableProjects = projects.filter((project) => (form.organization_id ? project.organization_id === form.organization_id : true));
   const totalAmount = useMemo(() => form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0), [form.items]);
+  const requiresIdentityCopy = useMemo(
+    () =>
+      requiresRecipientIdentityCopy({
+        budgetItem: form.budget_item,
+        expenseCategory: form.expense_category,
+        vendorBusinessNumber: form.vendor_business_number,
+        vendorName: form.payee_company,
+        payeeName: form.payee_name,
+      }),
+    [form.budget_item, form.expense_category, form.vendor_business_number, form.payee_company, form.payee_name],
+  );
+  const displayEvidenceChecklist = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...form.evidence_checklist,
+          ...buildEvidenceChecklist(form.payment_method, {
+            budgetItem: form.budget_item,
+            expenseCategory: form.expense_category,
+            vendorBusinessNumber: form.vendor_business_number,
+            vendorName: form.payee_company,
+            payeeName: form.payee_name,
+          }),
+        ]),
+      ),
+    [form.evidence_checklist, form.payment_method, form.budget_item, form.expense_category, form.vendor_business_number, form.payee_company, form.payee_name],
+  );
   const pendingChecklist = useMemo(
-    () => form.evidence_checklist.filter((key) => !form.evidence_completion[key]),
-    [form.evidence_checklist, form.evidence_completion],
+    () => displayEvidenceChecklist.filter((key) => !form.evidence_completion[key]),
+    [displayEvidenceChecklist, form.evidence_completion],
   );
   const warnings = useMemo(() => {
     const next: string[] = [];
     if ((form.expense_category.includes("회의") || form.budget_item.includes("회의")) && form.attendee_count > 0 && form.unit_amount > 15000) next.push("회의비 단가가 1인 15,000원을 초과합니다.");
     if (form.vat_amount > 0 && !form.vat_excluded) next.push("환급 대상 부가세 제외 여부를 확인하세요.");
     if (!form.budget_category || !form.budget_item) next.push("비목과 세목이 비어 있습니다.");
+    if (form.payment_method === "account_transfer" && requiresIdentityCopy) next.push("개인 강사·전문가 계좌이체 건은 신분증 사본과 통장사본을 함께 첨부하세요.");
     return next;
-  }, [form]);
+  }, [form, requiresIdentityCopy]);
 
   async function fetchList() {
     const response = await fetch("/api/expenditures");
@@ -154,7 +190,24 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
           supply_amount: proposal.supply_amount || proposal.total_amount,
           vat_amount: proposal.vat_amount,
           eligible_amount: proposal.eligible_amount || proposal.total_amount,
-          evidence_checklist: proposal.evidence_checklist.length ? proposal.evidence_checklist : defaultEvidenceChecklist(proposal.payment_method),
+          evidence_checklist: proposal.evidence_checklist.length
+            ? Array.from(
+                new Set([
+                  ...proposal.evidence_checklist,
+                  ...buildEvidenceChecklist(proposal.payment_method, {
+                    budgetItem: proposal.budget_item,
+                    expenseCategory: proposal.items.map((item) => item.expense_category).join(" "),
+                    vendorBusinessNumber: proposal.vendor_business_number,
+                    vendorName: proposal.vendor_name,
+                  }),
+                ]),
+              )
+            : buildEvidenceChecklist(proposal.payment_method, {
+                budgetItem: proposal.budget_item,
+                expenseCategory: proposal.items.map((item) => item.expense_category).join(" "),
+                vendorBusinessNumber: proposal.vendor_business_number,
+                vendorName: proposal.vendor_name,
+              }),
           evidence_completion: {},
           vat_excluded: false,
         });
@@ -285,7 +338,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
           <label className="block text-sm">비목<input className="field mt-2" value={form.budget_category} onChange={(event) => setForm({ ...form, budget_category: event.target.value })} /></label>
           <label className="block text-sm">세목<input className="field mt-2" value={form.budget_item} onChange={(event) => setForm({ ...form, budget_item: event.target.value })} /></label>
           <label className="block text-sm">적요<input className="field mt-2" value={form.expense_category} onChange={(event) => setForm({ ...form, expense_category: event.target.value })} /></label>
-          <label className="block text-sm">지급방법<select className="select mt-2" value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value as ExpenditureInput["payment_method"], evidence_checklist: defaultEvidenceChecklist(event.target.value as ExpenditureInput["payment_method"]), evidence_completion: {} })}>{paymentMethodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="block text-sm">지급방법<select className="select mt-2" value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value as ExpenditureInput["payment_method"], evidence_checklist: buildEvidenceChecklist(event.target.value as ExpenditureInput["payment_method"], { budgetItem: form.budget_item, expenseCategory: form.expense_category, vendorBusinessNumber: form.vendor_business_number, vendorName: form.payee_company, payeeName: form.payee_name }), evidence_completion: {} })}>{paymentMethodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className="block text-sm">증빙유형<select className="select mt-2" value={form.evidence_type} onChange={(event) => setForm({ ...form, evidence_type: event.target.value as ExpenditureInput["evidence_type"] })}>{evidenceTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className="block text-sm">거래처<input className="field mt-2" value={form.payee_company} onChange={(event) => setForm({ ...form, payee_company: event.target.value })} /></label>
           <label className="block text-sm">사업자등록번호<input className="field mt-2" value={form.vendor_business_number} onChange={(event) => setForm({ ...form, vendor_business_number: event.target.value })} /></label>
@@ -305,8 +358,8 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
         <div className="mt-3 flex items-center justify-between"><button className="btn btn-secondary" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}>행 추가</button><div className="text-sm font-semibold text-slate-700">합계 {formatCurrency(totalAmount)}원</div></div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <EvidenceChecklistSelector title="필수 증빙 체크리스트" description="결의 단계에서 실제로 챙겨야 할 기본 증빙입니다." selected={form.evidence_checklist} onToggle={toggleChecklist} />
-          <div className="rounded-3xl border border-slate-200 p-4"><div className="text-sm font-semibold text-slate-900">증빙 완료 체크</div><div className="mt-4 space-y-2">{form.evidence_checklist.length ? form.evidence_checklist.map((key) => <label key={key} className="flex items-center justify-between rounded-2xl border border-slate-200 px-3 py-2 text-sm"><span>{evidenceChecklistLabel(key)}</span><input type="checkbox" checked={Boolean(form.evidence_completion[key])} onChange={() => setForm({ ...form, evidence_completion: { ...form.evidence_completion, [key]: !form.evidence_completion[key] } })} /></label>) : <div className="rounded-2xl bg-slate-50 px-3 py-4 text-sm text-slate-500">체크리스트를 먼저 선택하세요.</div>}</div></div>
+          <EvidenceChecklistSelector title="필수 증빙 체크리스트" description="결의 단계에서 실제로 챙겨야 할 기본 증빙입니다." selected={displayEvidenceChecklist} onToggle={toggleChecklist} />
+          <div className="rounded-3xl border border-slate-200 p-4"><div className="text-sm font-semibold text-slate-900">증빙 완료 체크</div><div className="mt-4 space-y-2">{displayEvidenceChecklist.length ? displayEvidenceChecklist.map((key) => <label key={key} className="flex items-center justify-between rounded-2xl border border-slate-200 px-3 py-2 text-sm"><span>{evidenceChecklistLabel(key)}</span><input type="checkbox" checked={Boolean(form.evidence_completion[key])} onChange={() => setForm({ ...form, evidence_completion: { ...form.evidence_completion, [key]: !form.evidence_completion[key] } })} /></label>) : <div className="rounded-2xl bg-slate-50 px-3 py-4 text-sm text-slate-500">체크리스트를 먼저 선택하세요.</div>}</div></div>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">

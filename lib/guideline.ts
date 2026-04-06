@@ -31,6 +31,7 @@ export function paymentMethodLabel(value: string) {
   if (value === "youth_transfer" || value === "청년 실비지급" || value === "청년 개인 계좌이체") {
     return "계좌이체";
   }
+
   return paymentMethodOptions.find((option) => option.value === value)?.label ?? value;
 }
 
@@ -61,6 +62,7 @@ export const evidenceChecklistOptions = [
   { key: "grant_request_form", label: "역량강화지원금 신청서" },
   { key: "vendor_registration", label: "거래처 사업자등록증" },
   { key: "vendor_bankbook", label: "거래처 통장사본" },
+  { key: "recipient_id_copy", label: "수령인 신분증 사본" },
   { key: "tax_invoice", label: "세금계산서" },
   { key: "card_receipt", label: "카드전표" },
   { key: "shopping_capture", label: "구매사이트 화면캡처" },
@@ -85,11 +87,68 @@ export function defaultEvidenceChecklist(paymentMethod: ManagedPaymentMethod): E
 
   switch (paymentMethod) {
     case "corporate_card":
-      return [...common, "vendor_registration", "vendor_bankbook", "card_receipt", "shopping_capture", "transaction_statement"];
+      return [
+        ...common,
+        "vendor_registration",
+        "vendor_bankbook",
+        "card_receipt",
+        "shopping_capture",
+        "transaction_statement",
+      ];
     case "account_transfer":
     default:
       return [...common, "vendor_registration", "vendor_bankbook", "tax_invoice", "transaction_statement"];
   }
+}
+
+type EvidenceChecklistContext = {
+  budgetItem?: string;
+  expenseCategory?: string;
+  vendorBusinessNumber?: string;
+  vendorName?: string;
+  payeeName?: string;
+};
+
+const identityRequiredKeywords = [
+  "강사",
+  "특강",
+  "멘토",
+  "멘토링",
+  "상담",
+  "컨설팅",
+  "자문",
+  "전문가",
+  "원고",
+  "심사",
+  "수당",
+] as const;
+
+export function requiresRecipientIdentityCopy(context: EvidenceChecklistContext) {
+  if ((context.vendorBusinessNumber ?? "").trim()) return false;
+
+  const combinedText = [
+    context.budgetItem,
+    context.expenseCategory,
+    context.vendorName,
+    context.payeeName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return identityRequiredKeywords.some((keyword) => combinedText.includes(keyword));
+}
+
+export function buildEvidenceChecklist(
+  paymentMethod: ManagedPaymentMethod,
+  context: EvidenceChecklistContext = {},
+) {
+  const checklist = [...defaultEvidenceChecklist(paymentMethod)];
+
+  if (paymentMethod === "account_transfer" && requiresRecipientIdentityCopy(context)) {
+    checklist.push("recipient_id_copy");
+  }
+
+  return Array.from(new Set(checklist));
 }
 
 export function budgetScopeLabel(value: string) {
@@ -111,56 +170,56 @@ export const guidelineRules: GuidelineRule[] = [
     id: "cash-payment-forbidden",
     title: "현금 지급 불가",
     severity: "blocking",
-    description: "사업비는 법인카드/체크카드 또는 계좌이체 방식만 인정된다.",
+    description: "사업비는 법인카드 또는 계좌이체 방식만 인정됩니다.",
     relatedFields: ["payment_method"],
   },
   {
     id: "direct-indirect-transfer-forbidden",
-    title: "직접비와 간접비 간 전용 불가",
+    title: "직접비와 간접비 전용 불가",
     severity: "blocking",
-    description: "직접비와 간접비 사이의 전용은 허용되지 않는다.",
+    description: "직접비와 간접비 사이 전용은 허용되지 않습니다.",
     relatedFields: ["budget_scope", "transfer_note"],
   },
   {
     id: "transfer-over-ten-percent",
-    title: "세목 전용 10% 초과 점검",
+    title: "세목 전용 10% 초과 경고",
     severity: "warning",
-    description: "세목 전용 누적 10% 이상은 재단 승인 대상이다.",
+    description: "세목 전용 누계가 10% 이상이면 재단 승인 대상입니다.",
     relatedFields: ["budget_category", "budget_item", "requires_foundation_approval"],
   },
   {
     id: "missing-core-evidence",
     title: "핵심 증빙 누락",
     severity: "blocking",
-    description: "최종확정 전 필수 증빙 체크리스트를 모두 확인해야 한다.",
+    description: "최종확정 전에는 필수 증빙 체크리스트를 모두 확인해야 합니다.",
     relatedFields: ["evidence_checklist"],
   },
   {
     id: "meeting-cost-limit",
     title: "회의비 식비 한도 초과",
     severity: "warning",
-    description: "회의 식비는 1인 15,000원을 초과할 수 없다.",
+    description: "회의 식비는 1인 15,000원을 초과할 수 없습니다.",
     relatedFields: ["attendee_count", "unit_amount"],
   },
   {
     id: "promotion-cost-limit",
-    title: "사업추진비 상한 점검",
+    title: "사업추진비 상한 경고",
     severity: "warning",
-    description: "사업추진비는 1인 30,000원 상한과 운영인건비 5% 한도를 점검해야 한다.",
+    description: "사업추진비는 1인 30,000원 상한과 운영간접비 5% 한도를 확인해야 합니다.",
     relatedFields: ["attendee_count", "unit_amount"],
   },
   {
     id: "travel-overseas-forbidden",
     title: "해외출장 불가",
     severity: "blocking",
-    description: "지침상 해외출장은 집행이 불가하다.",
+    description: "지침상 해외출장은 집행할 수 없습니다.",
     relatedFields: ["travel_plan"],
   },
   {
     id: "vat-must-be-excluded",
     title: "환급 부가세 제외 필요",
     severity: "warning",
-    description: "환급 또는 공제 대상 부가가치세는 집행 인정금액에서 제외해야 한다.",
+    description: "환급 또는 공제 대상 부가가치세는 집행 인정금액에서 제외해야 합니다.",
     relatedFields: ["supply_amount", "vat_amount", "eligible_amount"],
   },
 ];
@@ -168,15 +227,15 @@ export const guidelineRules: GuidelineRule[] = [
 export const restrictedMerchantKeywords = [
   "룸살롱",
   "스탠드바",
-  "나이트클럽",
-  "단란주점",
+  "칵테일바",
+  "유흥주점",
   "노래방",
   "성인용품",
   "안마",
   "사우나",
-  "실내골프장",
+  "실내골프",
   "카지노",
-  "전자오락실",
+  "전자오락",
   "게임방",
   "복권",
   "상품권",
