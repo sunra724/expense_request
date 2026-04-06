@@ -18,12 +18,20 @@ import { defaultEvidenceChecklist } from "@/lib/guideline";
 import { getSupabaseAdmin, hasSupabaseEnv } from "@/lib/supabase";
 import type { Proposal, ProposalInput } from "@/lib/types";
 
+function inferBudgetScope(row: Record<string, unknown>): Proposal["budget_scope"] {
+  const docNumber = String(row.doc_number ?? "");
+  if (docNumber.includes("간접")) return "indirect";
+  if (docNumber.includes("직접")) return "direct";
+  return "direct";
+}
+
 function baseGuidelineFallback(row: Record<string, unknown>) {
   const totalAmount = Number(row.total_amount ?? 0);
   const paymentMethod: Proposal["payment_method"] = "account_transfer";
 
   return {
     ...createDefaultProposalGuidelineFields(),
+    budget_scope: inferBudgetScope(row),
     planned_payment_date: String(row.submission_date ?? ""),
     payment_method: paymentMethod,
     supply_amount: totalAmount,

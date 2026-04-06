@@ -22,12 +22,20 @@ import { defaultEvidenceChecklist, normalizePaymentMethod, paymentMethodLabel } 
 import { getSupabaseAdmin, hasSupabaseEnv } from "@/lib/supabase";
 import type { Expenditure, ExpenditureInput } from "@/lib/types";
 
+function inferBudgetScope(row: Record<string, unknown>): Expenditure["budget_scope"] {
+  const docNumber = String(row.doc_number ?? "");
+  if (docNumber.includes("간접")) return "indirect";
+  if (docNumber.includes("직접")) return "direct";
+  return "direct";
+}
+
 function baseGuidelineFallback(row: Record<string, unknown>) {
   const totalAmount = Number(row.total_amount ?? 0);
   const paymentMethod = normalizePaymentMethod(row.payment_method);
 
   return {
     ...createDefaultExpenditureGuidelineFields(),
+    budget_scope: inferBudgetScope(row),
     payment_method: paymentMethod,
     supply_amount: totalAmount,
     eligible_amount: totalAmount,
