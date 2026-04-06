@@ -31,6 +31,23 @@ function toExpenditureInput(item: Expenditure): ExpenditureInput {
     evidence_sheet: item.evidence_sheet,
     photo_sheet: item.photo_sheet,
     status: item.status,
+    organization_id: item.organization_id,
+    project_id: item.project_id,
+    template_code: item.template_code,
+    budget_scope: item.budget_scope,
+    budget_category: item.budget_category,
+    budget_item: item.budget_item,
+    vendor_business_number: item.vendor_business_number,
+    evidence_type: item.evidence_type,
+    supply_amount: item.supply_amount,
+    vat_amount: item.vat_amount,
+    eligible_amount: item.eligible_amount,
+    attendee_count: item.attendee_count,
+    unit_amount: item.unit_amount,
+    evidence_checklist: item.evidence_checklist,
+    evidence_completion: item.evidence_completion,
+    compliance_flags: item.compliance_flags,
+    vat_excluded: item.vat_excluded,
   };
 }
 

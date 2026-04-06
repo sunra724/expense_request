@@ -3,49 +3,98 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Eye, Plus, Printer, Trash2 } from "lucide-react";
+import EvidenceChecklistSelector from "@/components/EvidenceChecklistSelector";
 import {
   countFilledEvidenceItems,
   countFilledPhotoItems,
   createEvidenceAttachmentSheet,
   createPhotoAttachmentSheet,
 } from "@/lib/attachment-sheets";
-import type { Expenditure, ExpenditureInput, ExpenditureItem, Proposal } from "@/lib/types";
+import { createDefaultExpenditureGuidelineFields } from "@/lib/document-defaults";
 import { formatCurrency, today } from "@/lib/format";
+import {
+  budgetScopeLabel,
+  budgetScopeOptions,
+  defaultEvidenceChecklist,
+  evidenceChecklistLabel,
+  evidenceTypeLabel,
+  evidenceTypeOptions,
+  paymentMethodLabel,
+  paymentMethodOptions,
+} from "@/lib/guideline";
+import type { Expenditure, ExpenditureInput, ExpenditureItem, Organization, Project, Proposal } from "@/lib/types";
 
+type ContextPayload = { organizations: Organization[]; projects: Project[] };
 const emptyItem = (): ExpenditureItem => ({ description: "", amount: 0, note: "" });
 
-const blankForm = (): ExpenditureInput => ({
-  proposal_id: null,
-  doc_number: "",
-  project_name: "",
-  expense_category: "",
-  issue_date: today(),
-  record_date: today(),
-  total_amount: 0,
-  payee_address: "",
-  payee_company: "",
-  payee_name: "",
-  payment_method: "계좌이체",
-  receipt_date: today(),
-  receipt_name: "",
-  items: [emptyItem()],
-  evidence_sheet: createEvidenceAttachmentSheet(),
-  photo_sheet: createPhotoAttachmentSheet(),
-  status: "draft",
-});
+function blankForm(organizations: Organization[], projects: Project[]): ExpenditureInput {
+  const project = projects[0] ?? null;
+  const organization =
+    organizations.find((item) => item.id === project?.organization_id) ?? organizations[0] ?? null;
+  return {
+    proposal_id: null,
+    doc_number: "",
+    project_name: project?.name ?? "",
+    expense_category: "",
+    issue_date: today(),
+    record_date: today(),
+    total_amount: 0,
+    payee_address: "",
+    payee_company: "",
+    payee_name: "",
+    receipt_date: today(),
+    receipt_name: "",
+    items: [emptyItem()],
+    evidence_sheet: createEvidenceAttachmentSheet(project?.name),
+    photo_sheet: createPhotoAttachmentSheet(project?.name),
+    status: "draft",
+    ...createDefaultExpenditureGuidelineFields(organization, project),
+  };
+}
 
-export default function ExpenditureManager({
-  initialFromProposalId = null,
-}: {
-  initialFromProposalId?: string | null;
-}) {
+function normalizePayload(form: ExpenditureInput, totalAmount: number): ExpenditureInput {
+  const checklist = form.evidence_checklist.length
+    ? form.evidence_checklist
+    : defaultEvidenceChecklist(form.payment_method);
+  return {
+    ...form,
+    total_amount: totalAmount,
+    supply_amount: form.supply_amount || Math.max(totalAmount - form.vat_amount, 0),
+    eligible_amount: form.eligible_amount || Math.max(totalAmount - (form.vat_excluded ? form.vat_amount : 0), 0),
+    evidence_checklist: checklist,
+    evidence_completion: Object.fromEntries(
+      Object.entries(form.evidence_completion).filter(([key]) =>
+        checklist.includes(key as ExpenditureInput["evidence_checklist"][number]),
+      ),
+    ) as ExpenditureInput["evidence_completion"],
+  };
+}
+
+export default function ExpenditureManager({ initialFromProposalId = null }: { initialFromProposalId?: string | null }) {
   const [items, setItems] = useState<Expenditure[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
-  const [form, setForm] = useState<ExpenditureInput>(blankForm());
+  const [context, setContext] = useState<ContextPayload>({ organizations: [], projects: [] });
+  const [form, setForm] = useState<ExpenditureInput>(blankForm([], []));
   const [editingId, setEditingId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [linkedProposalName, setLinkedProposalName] = useState("");
   const [prefilledFromProposalId, setPrefilledFromProposalId] = useState<number | null>(null);
+
+  const organizations = context.organizations;
+  const projects = context.projects;
+  const availableProjects = projects.filter((project) => (form.organization_id ? project.organization_id === form.organization_id : true));
+  const totalAmount = useMemo(() => form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0), [form.items]);
+  const pendingChecklist = useMemo(
+    () => form.evidence_checklist.filter((key) => !form.evidence_completion[key]),
+    [form.evidence_checklist, form.evidence_completion],
+  );
+  const warnings = useMemo(() => {
+    const next: string[] = [];
+    if ((form.expense_category.includes("회의") || form.budget_item.includes("회의")) && form.attendee_count > 0 && form.unit_amount > 15000) next.push("회의비 단가가 1인 15,000원을 초과합니다.");
+    if (form.vat_amount > 0 && !form.vat_excluded) next.push("환급 대상 부가세 제외 여부를 확인하세요.");
+    if (!form.budget_category || !form.budget_item) next.push("비목과 세목이 비어 있습니다.");
+    return next;
+  }, [form]);
 
   async function fetchList() {
     const response = await fetch("/api/expenditures");
@@ -54,11 +103,13 @@ export default function ExpenditureManager({
 
   useEffect(() => {
     let active = true;
-    fetch("/api/expenditures")
-      .then((response) => response.json())
-      .then((data: Expenditure[]) => {
-        if (active) setItems(data);
-      });
+    Promise.all([fetch("/api/expenditures"), fetch("/api/context")]).then(async ([a, b]) => {
+      const [expenditures, nextContext] = await Promise.all([a.json(), b.json()]);
+      if (!active) return;
+      setItems(expenditures);
+      setContext(nextContext);
+      setForm((current) => (current.organization_id || current.project_id ? current : blankForm(nextContext.organizations ?? [], nextContext.projects ?? [])));
+    });
     return () => {
       active = false;
     };
@@ -66,55 +117,53 @@ export default function ExpenditureManager({
 
   useEffect(() => {
     const fromProposalId = initialFromProposalId;
-    if (!fromProposalId || editingId) return;
-    if (prefilledFromProposalId === Number(fromProposalId)) return;
-
+    if (!fromProposalId || editingId || prefilledFromProposalId === Number(fromProposalId)) return;
     let active = true;
     fetch(`/api/proposals/${fromProposalId}`)
       .then((response) => response.json())
       .then((proposal: Proposal) => {
         if (!active || !proposal?.id) return;
-        const drafted: ExpenditureInput = {
+        setForm({
           proposal_id: proposal.id,
           doc_number: "",
           project_name: proposal.project_name,
-          expense_category: proposal.items[0]?.expense_category ?? "",
+          expense_category: proposal.items[0]?.expense_category ?? proposal.budget_item ?? "",
           issue_date: today(),
           record_date: today(),
           total_amount: proposal.total_amount,
           payee_address: "",
-          payee_company: "",
+          payee_company: proposal.vendor_name,
           payee_name: "",
-          payment_method: "계좌이체",
           receipt_date: today(),
           receipt_name: "",
-          items: proposal.items.length
-            ? proposal.items.map((item) => ({
-                description: item.description,
-                amount: item.estimated_amount,
-                note: item.note,
-              }))
-            : [emptyItem()],
+          items: proposal.items.length ? proposal.items.map((item) => ({ description: item.description, amount: item.estimated_amount, note: item.note })) : [emptyItem()],
           evidence_sheet: createEvidenceAttachmentSheet(proposal.project_name),
           photo_sheet: createPhotoAttachmentSheet(proposal.project_name),
           status: "draft",
-        };
-        setForm(drafted);
+          ...createDefaultExpenditureGuidelineFields(),
+          organization_id: proposal.organization_id,
+          project_id: proposal.project_id,
+          template_code: proposal.template_code,
+          budget_scope: proposal.budget_scope,
+          budget_category: proposal.budget_category,
+          budget_item: proposal.budget_item,
+          payment_method: proposal.payment_method,
+          vendor_business_number: proposal.vendor_business_number,
+          supply_amount: proposal.supply_amount || proposal.total_amount,
+          vat_amount: proposal.vat_amount,
+          eligible_amount: proposal.eligible_amount || proposal.total_amount,
+          evidence_checklist: proposal.evidence_checklist.length ? proposal.evidence_checklist : defaultEvidenceChecklist(proposal.payment_method),
+          evidence_completion: {},
+          vat_excluded: false,
+        });
         setLinkedProposalName(proposal.project_name);
         setPrefilledFromProposalId(proposal.id);
-        setEditingId(null);
         setOpen(true);
       });
-
     return () => {
       active = false;
     };
   }, [editingId, initialFromProposalId, prefilledFromProposalId]);
-
-  const totalAmount = useMemo(
-    () => form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0),
-    [form.items],
-  );
 
   async function openForEdit(id: number) {
     const response = await fetch(`/api/expenditures/${id}`);
@@ -126,15 +175,18 @@ export default function ExpenditureManager({
   }
 
   async function save(status: Expenditure["status"]) {
-    const payload: ExpenditureInput = { ...form, total_amount: totalAmount, status };
+    if (status === "finalized" && pendingChecklist.length > 0) {
+      window.alert("필수 증빙 완료 체크가 남아 있습니다.");
+      return;
+    }
     await fetch(editingId ? `/api/expenditures/${editingId}` : "/api/expenditures", {
       method: editingId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(normalizePayload({ ...form, status }, totalAmount)),
     });
     setOpen(false);
     setEditingId(null);
-    setForm(blankForm());
+    setForm(blankForm(organizations, projects));
     setLinkedProposalName("");
     fetchList();
   }
@@ -145,6 +197,47 @@ export default function ExpenditureManager({
     setSelected((current) => current.filter((item) => item !== id));
   }
 
+  function updateOrganization(id: number) {
+    const organization = organizations.find((item) => item.id === id) ?? null;
+    const project = projects.find((item) => item.organization_id === id) ?? null;
+    setForm((current) => ({
+      ...current,
+      organization_id: organization?.id ?? null,
+      project_id: project?.id ?? null,
+      project_name: project?.name ?? current.project_name,
+      template_code: organization?.default_template_code ?? current.template_code,
+      evidence_sheet: createEvidenceAttachmentSheet(project?.name ?? current.project_name),
+      photo_sheet: createPhotoAttachmentSheet(project?.name ?? current.project_name),
+    }));
+  }
+
+  function updateProject(id: number) {
+    const project = projects.find((item) => item.id === id) ?? null;
+    const organization = organizations.find((item) => item.id === project?.organization_id) ?? null;
+    setForm((current) => ({
+      ...current,
+      organization_id: organization?.id ?? current.organization_id,
+      project_id: project?.id ?? null,
+      project_name: project?.name ?? current.project_name,
+      template_code: organization?.default_template_code ?? current.template_code,
+      evidence_sheet: createEvidenceAttachmentSheet(project?.name ?? current.project_name),
+      photo_sheet: createPhotoAttachmentSheet(project?.name ?? current.project_name),
+    }));
+  }
+
+  function toggleChecklist(key: ExpenditureInput["evidence_checklist"][number]) {
+    setForm((current) => {
+      const exists = current.evidence_checklist.includes(key);
+      const evidence_completion = { ...current.evidence_completion };
+      if (exists) delete evidence_completion[key];
+      return {
+        ...current,
+        evidence_checklist: exists ? current.evidence_checklist.filter((item) => item !== key) : [...current.evidence_checklist, key],
+        evidence_completion,
+      };
+    });
+  }
+
   const batchHref = `/batch-preview?ids=${selected.join(",")}`;
 
   return (
@@ -153,266 +246,72 @@ export default function ExpenditureManager({
         <div>
           <div className="mb-2 text-sm uppercase tracking-[0.24em] text-slate-500">Resolution Workspace</div>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">지출결의서 관리</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            품의서 승인 후 실제 집행 내역을 정리하는 후속 문서입니다. Supabase 키를 넣으면 실제 운영 DB와 연결됩니다.
-          </p>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">실제 지급내역과 증빙 완료 상태를 함께 관리합니다.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button className="btn btn-primary" onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4" />
-            새 결의서
+          <button className="btn btn-primary" onClick={() => { setEditingId(null); setLinkedProposalName(""); setForm(blankForm(organizations, projects)); setOpen(true); }}>
+            <Plus className="h-4 w-4" />새 결의서
           </button>
-          {selected.length > 0 ? (
-            <Link className="btn btn-secondary" href={batchHref} target="_blank">
-              <Printer className="h-4 w-4" />
-              선택 {selected.length}건 인쇄
-            </Link>
-          ) : null}
+          {selected.length > 0 ? <Link className="btn btn-secondary" href={batchHref} target="_blank"><Printer className="h-4 w-4" />선택 {selected.length}건 인쇄</Link> : null}
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        {[
-          { label: "전체", value: items.length },
-          { label: "작성중", value: items.filter((item) => item.status === "draft").length },
-          { label: "완료", value: items.filter((item) => item.status === "finalized").length },
-        ].map((card) => (
-          <div key={card.label} className="panel px-5 py-5">
-            <div className="text-sm text-slate-500">{card.label}</div>
-            <div className="mt-3 text-3xl font-semibold">{card.value}</div>
-          </div>
+      <section className="grid gap-4 md:grid-cols-4">
+        {[{ label: "전체", value: items.length }, { label: "작성중", value: items.filter((item) => item.status === "draft").length }, { label: "완료", value: items.filter((item) => item.status === "finalized").length }, { label: "증빙대기", value: items.filter((item) => item.evidence_checklist.some((key) => !item.evidence_completion[key])).length }].map((card) => (
+          <div key={card.label} className="panel px-5 py-5"><div className="text-sm text-slate-500">{card.label}</div><div className="mt-3 text-3xl font-semibold">{card.value}</div></div>
         ))}
       </section>
 
-      <section className="panel overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-4 py-3">선택</th>
-                <th className="px-4 py-3">사업명</th>
-                <th className="px-4 py-3">연계 품의서</th>
-                <th className="px-4 py-3">비목</th>
-                <th className="px-4 py-3 text-right">금액</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3">액션</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(item.id)}
-                      onChange={() =>
-                        setSelected((current) =>
-                          current.includes(item.id)
-                            ? current.filter((value) => value !== item.id)
-                            : [...current, item.id],
-                        )
-                      }
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{item.project_name}</div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      증빙 {countFilledEvidenceItems(item.evidence_sheet)}건 · 사진 {countFilledPhotoItems(item.photo_sheet)}건
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {item.proposal_id ? (
-                      <Link className="text-sm font-medium text-teal-700 underline-offset-2 hover:underline" href={`/proposals/preview/${item.proposal_id}`} target="_blank">
-                        품의서 #{item.proposal_id}
-                      </Link>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="px-4 py-3">{item.expense_category || "-"}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(item.total_amount)}원</td>
-                  <td className="px-4 py-3">
-                    <span className={`badge ${item.status === "finalized" ? "badge-finalized" : "badge-draft"}`}>
-                      {item.status === "finalized" ? "완료" : "작성중"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <Link className="btn btn-secondary !px-3 !py-2" href={`/preview/${item.id}`} target="_blank">
-                        <Eye className="h-4 w-4" />
-                      </Link>
-                      <Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/evidence`}>
-                        증빙
-                      </Link>
-                      <Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/photos`}>
-                        사진
-                      </Link>
-                      <button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>
-                        수정
-                      </button>
-                      <button className="btn btn-danger !px-3 !py-2" onClick={() => remove(item.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <section className="panel overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">선택</th><th className="px-4 py-3">사업</th><th className="px-4 py-3">예산항목</th><th className="px-4 py-3">지급방법</th><th className="px-4 py-3">증빙</th><th className="px-4 py-3 text-right">금액</th><th className="px-4 py-3">상태</th><th className="px-4 py-3">액션</th></tr></thead><tbody>{items.map((item) => { const pending = item.evidence_checklist.filter((key) => !item.evidence_completion[key]).length; return <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><input type="checkbox" checked={selected.includes(item.id)} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} /></td><td className="px-4 py-3"><div className="font-medium">{item.project_name}</div><div className="mt-1 text-xs text-slate-500">품의 {item.proposal_id ? `#${item.proposal_id}` : "없음"}</div></td><td className="px-4 py-3"><div>{item.budget_category || "-"}</div><div className="mt-1 text-xs text-slate-500">{budgetScopeLabel(item.budget_scope)} / {item.budget_item || "-"}</div></td><td className="px-4 py-3">{paymentMethodLabel(item.payment_method)}</td><td className="px-4 py-3"><div className="text-xs text-slate-600">첨부 {countFilledEvidenceItems(item.evidence_sheet)} / 사진 {countFilledPhotoItems(item.photo_sheet)}</div><div className={`mt-1 text-xs ${pending ? "text-amber-600" : "text-emerald-600"}`}>{pending ? `${pending}개 미완료` : "체크 완료"}</div></td><td className="px-4 py-3 text-right">{formatCurrency(item.total_amount)}원</td><td className="px-4 py-3"><span className={`badge ${item.status === "finalized" ? "badge-finalized" : "badge-draft"}`}>{item.status === "finalized" ? "완료" : "작성중"}</span></td><td className="px-4 py-3"><div className="flex gap-2"><Link className="btn btn-secondary !px-3 !py-2" href={`/preview/${item.id}`} target="_blank"><Eye className="h-4 w-4" /></Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/evidence`}>증빙</Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/photos`}>사진</Link><button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>수정</button><button className="btn btn-danger !px-3 !py-2" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4" /></button></div></td></tr>; })}</tbody></table></div></section>
+
+      {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4"><div className="panel max-h-[92vh] w-full max-w-6xl overflow-y-auto px-6 py-6"><div className="mb-6 flex items-center justify-between"><div><div className="text-sm text-slate-500">지출결의서</div><h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>{form.proposal_id ? <p className="mt-2 text-sm text-teal-700">연결 품의서 #{form.proposal_id}{linkedProposalName ? ` · ${linkedProposalName}` : ""}</p> : null}</div><button className="btn btn-secondary" onClick={() => setOpen(false)}>닫기</button></div>
+
+        <div className="grid gap-4 md:grid-cols-4">
+          <label className="block text-sm">기관<select className="select mt-2" value={form.organization_id ?? ""} onChange={(event) => updateOrganization(Number(event.target.value))}><option value="">기관 선택</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
+          <label className="block text-sm">사업<select className="select mt-2" value={form.project_id ?? ""} onChange={(event) => updateProject(Number(event.target.value))}><option value="">사업 선택</option>{availableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+          <label className="block text-sm">연결 품의서<input className="field mt-2" type="number" value={form.proposal_id ?? ""} onChange={(event) => setForm({ ...form, proposal_id: event.target.value ? Number(event.target.value) : null })} /></label>
+          <label className="block text-sm">문서번호<input className="field mt-2" value={form.doc_number} onChange={(event) => setForm({ ...form, doc_number: event.target.value })} /></label>
+          <label className="block text-sm md:col-span-2">사업명<input className="field mt-2" value={form.project_name} onChange={(event) => setForm({ ...form, project_name: event.target.value })} /></label>
+          <label className="block text-sm">발의일<input className="field mt-2" type="date" value={form.issue_date} onChange={(event) => setForm({ ...form, issue_date: event.target.value })} /></label>
+          <label className="block text-sm">기록일<input className="field mt-2" type="date" value={form.record_date} onChange={(event) => setForm({ ...form, record_date: event.target.value })} /></label>
         </div>
-      </section>
 
-      {open ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4">
-          <div className="panel max-h-[92vh] w-full max-w-5xl overflow-y-auto px-6 py-6">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <div className="text-sm text-slate-500">지출결의서</div>
-                <h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>
-                {form.proposal_id ? (
-                  <p className="mt-2 text-sm text-teal-700">
-                    연결된 지출품의서 #{form.proposal_id}
-                    {linkedProposalName ? ` · ${linkedProposalName}` : ""}
-                  </p>
-                ) : null}
-              </div>
-              <button className="btn btn-secondary" onClick={() => setOpen(false)}>
-                닫기
-              </button>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <label className="block text-sm">
-                연계 품의서 ID
-                <input
-                  className="field mt-2"
-                  type="number"
-                  value={form.proposal_id ?? ""}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      proposal_id: event.target.value ? Number(event.target.value) : null,
-                    })
-                  }
-                />
-              </label>
-              {[
-                { key: "project_name", label: "단위사업명" },
-                { key: "doc_number", label: "문서번호" },
-                { key: "expense_category", label: "비목" },
-                { key: "issue_date", label: "발의일", type: "date" },
-                { key: "record_date", label: "회계기록일", type: "date" },
-                { key: "payment_method", label: "지급방법" },
-                { key: "payee_company", label: "거래처" },
-                { key: "payee_name", label: "수취인" },
-                { key: "receipt_name", label: "영수증명" },
-              ].map((field) => (
-                <label key={field.key} className="block text-sm">
-                  {field.label}
-                  <input
-                    className="field mt-2"
-                    type={"type" in field ? field.type : "text"}
-                    value={form[field.key as keyof ExpenditureInput] as string}
-                    onChange={(event) =>
-                      setForm({ ...form, [field.key]: event.target.value } as ExpenditureInput)
-                    }
-                  />
-                </label>
-              ))}
-              <label className="block text-sm md:col-span-3">
-                주소
-                <input
-                  className="field mt-2"
-                  value={form.payee_address}
-                  onChange={(event) => setForm({ ...form, payee_address: event.target.value })}
-                />
-              </label>
-            </div>
-
-            <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-200">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-3 py-3">적요</th>
-                    <th className="px-3 py-3">금액</th>
-                    <th className="px-3 py-3">비고</th>
-                    <th className="px-3 py-3">삭제</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {form.items.map((item, index) => (
-                    <tr key={index} className="border-t border-slate-100">
-                      <td className="px-2 py-2">
-                        <input
-                          className="field"
-                          value={item.description}
-                          onChange={(event) => {
-                            const next = [...form.items];
-                            next[index] = { ...next[index], description: event.target.value };
-                            setForm({ ...form, items: next });
-                          }}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className="field"
-                          type="number"
-                          value={item.amount}
-                          onChange={(event) => {
-                            const next = [...form.items];
-                            next[index] = { ...next[index], amount: Number(event.target.value) };
-                            setForm({ ...form, items: next });
-                          }}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          className="field"
-                          value={item.note}
-                          onChange={(event) => {
-                            const next = [...form.items];
-                            next[index] = { ...next[index], note: event.target.value };
-                            setForm({ ...form, items: next });
-                          }}
-                        />
-                      </td>
-                      <td className="px-2 py-2 text-center">
-                        <button
-                          className="btn btn-danger !px-3 !py-2"
-                          onClick={() =>
-                            setForm({
-                              ...form,
-                              items: form.items.length === 1 ? [emptyItem()] : form.items.filter((_, i) => i !== index),
-                            })
-                          }
-                        >
-                          삭제
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-3 flex items-center justify-between">
-              <button className="btn btn-secondary" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}>
-                행 추가
-              </button>
-              <div className="text-sm font-semibold text-slate-700">합계 {formatCurrency(totalAmount)}원</div>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button className="btn btn-secondary" onClick={() => save("draft")}>
-                임시저장
-              </button>
-              <button className="btn btn-primary" onClick={() => save("finalized")}>
-                저장 완료
-              </button>
-            </div>
-          </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-4">
+          <label className="block text-sm">예산구분<select className="select mt-2" value={form.budget_scope} onChange={(event) => setForm({ ...form, budget_scope: event.target.value as ExpenditureInput["budget_scope"] })}>{budgetScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="block text-sm">비목<input className="field mt-2" value={form.budget_category} onChange={(event) => setForm({ ...form, budget_category: event.target.value })} /></label>
+          <label className="block text-sm">세목<input className="field mt-2" value={form.budget_item} onChange={(event) => setForm({ ...form, budget_item: event.target.value })} /></label>
+          <label className="block text-sm">적요<input className="field mt-2" value={form.expense_category} onChange={(event) => setForm({ ...form, expense_category: event.target.value })} /></label>
+          <label className="block text-sm">지급방법<select className="select mt-2" value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value as ExpenditureInput["payment_method"], evidence_checklist: defaultEvidenceChecklist(event.target.value as ExpenditureInput["payment_method"]), evidence_completion: {} })}>{paymentMethodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="block text-sm">증빙유형<select className="select mt-2" value={form.evidence_type} onChange={(event) => setForm({ ...form, evidence_type: event.target.value as ExpenditureInput["evidence_type"] })}>{evidenceTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="block text-sm">거래처<input className="field mt-2" value={form.payee_company} onChange={(event) => setForm({ ...form, payee_company: event.target.value })} /></label>
+          <label className="block text-sm">사업자등록번호<input className="field mt-2" value={form.vendor_business_number} onChange={(event) => setForm({ ...form, vendor_business_number: event.target.value })} /></label>
+          <label className="block text-sm">수령인명<input className="field mt-2" value={form.payee_name} onChange={(event) => setForm({ ...form, payee_name: event.target.value })} /></label>
+          <label className="block text-sm">영수증명<input className="field mt-2" value={form.receipt_name} onChange={(event) => setForm({ ...form, receipt_name: event.target.value })} /></label>
+          <label className="block text-sm">영수일자<input className="field mt-2" type="date" value={form.receipt_date} onChange={(event) => setForm({ ...form, receipt_date: event.target.value })} /></label>
+          <label className="block text-sm md:col-span-4">주소<input className="field mt-2" value={form.payee_address} onChange={(event) => setForm({ ...form, payee_address: event.target.value })} /></label>
+          <label className="block text-sm">공급가액<input className="field mt-2" type="number" value={form.supply_amount} onChange={(event) => setForm({ ...form, supply_amount: Number(event.target.value) })} /></label>
+          <label className="block text-sm">부가세<input className="field mt-2" type="number" value={form.vat_amount} onChange={(event) => setForm({ ...form, vat_amount: Number(event.target.value) })} /></label>
+          <label className="block text-sm">집행인정금액<input className="field mt-2" type="number" value={form.eligible_amount} onChange={(event) => setForm({ ...form, eligible_amount: Number(event.target.value) })} /></label>
+          <label className="flex items-center gap-2 rounded-3xl border border-slate-200 px-4 py-3 text-sm"><input type="checkbox" checked={form.vat_excluded} onChange={(event) => setForm({ ...form, vat_excluded: event.target.checked })} />부가세 제외 처리</label>
+          <label className="block text-sm">참석인원<input className="field mt-2" type="number" value={form.attendee_count} onChange={(event) => setForm({ ...form, attendee_count: Number(event.target.value) })} /></label>
+          <label className="block text-sm">1인단가<input className="field mt-2" type="number" value={form.unit_amount} onChange={(event) => setForm({ ...form, unit_amount: Number(event.target.value) })} /></label>
         </div>
-      ) : null}
+
+        <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-200"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-3">적요</th><th className="px-3 py-3">금액</th><th className="px-3 py-3">비고</th><th className="px-3 py-3">삭제</th></tr></thead><tbody>{form.items.map((item, index) => <tr key={index} className="border-t border-slate-100"><td className="px-2 py-2"><input className="field" value={item.description} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], description: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><input className="field" type="number" value={item.amount} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], amount: Number(event.target.value) }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><input className="field" value={item.note} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], note: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2 text-center"><button className="btn btn-danger !px-3 !py-2" onClick={() => setForm({ ...form, items: form.items.length === 1 ? [emptyItem()] : form.items.filter((_, i) => i !== index) })}>삭제</button></td></tr>)}</tbody></table></div>
+        <div className="mt-3 flex items-center justify-between"><button className="btn btn-secondary" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}>행 추가</button><div className="text-sm font-semibold text-slate-700">합계 {formatCurrency(totalAmount)}원</div></div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <EvidenceChecklistSelector title="필수 증빙 체크리스트" description="결의 단계에서 실제로 챙겨야 할 기본 증빙입니다." selected={form.evidence_checklist} onToggle={toggleChecklist} />
+          <div className="rounded-3xl border border-slate-200 p-4"><div className="text-sm font-semibold text-slate-900">증빙 완료 체크</div><div className="mt-4 space-y-2">{form.evidence_checklist.length ? form.evidence_checklist.map((key) => <label key={key} className="flex items-center justify-between rounded-2xl border border-slate-200 px-3 py-2 text-sm"><span>{evidenceChecklistLabel(key)}</span><input type="checkbox" checked={Boolean(form.evidence_completion[key])} onChange={() => setForm({ ...form, evidence_completion: { ...form.evidence_completion, [key]: !form.evidence_completion[key] } })} /></label>) : <div className="rounded-2xl bg-slate-50 px-3 py-4 text-sm text-slate-500">체크리스트를 먼저 선택하세요.</div>}</div></div>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div className={`rounded-3xl px-4 py-4 text-sm ${warnings.length ? "border border-amber-200 bg-amber-50 text-amber-900" : "border border-emerald-200 bg-emerald-50 text-emerald-900"}`}><div className="font-semibold">{warnings.length ? "확인할 항목" : "기본 확인 완료"}</div>{warnings.length ? <ul className="mt-2 space-y-1">{warnings.map((warning) => <li key={warning}>- {warning}</li>)}</ul> : <div className="mt-2">현재 입력 기준으로 큰 경고는 없습니다.</div>}</div>
+          <div className="rounded-3xl border border-slate-200 px-4 py-4 text-sm text-slate-700"><div className="font-semibold text-slate-900">정산 메모</div><div className="mt-2 space-y-2"><div>지급방법: {paymentMethodLabel(form.payment_method)}</div><div>증빙유형: {evidenceTypeLabel(form.evidence_type)}</div><div>미완료 증빙: {pendingChecklist.length}건</div></div></div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3"><button className="btn btn-secondary" onClick={() => save("draft")}>임시저장</button><button className="btn btn-primary" onClick={() => save("finalized")}>저장 완료</button></div>
+      </div></div> : null}
     </div>
   );
 }

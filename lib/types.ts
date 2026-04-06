@@ -1,3 +1,10 @@
+import type {
+  BudgetScope,
+  EvidenceChecklistKey,
+  ManagedEvidenceType,
+  ManagedPaymentMethod,
+} from "@/lib/guideline";
+
 export type DocumentStatus = "draft" | "finalized";
 export type FundType = "grant" | "self" | "both";
 export type EvidenceDocumentType =
@@ -57,7 +64,74 @@ export type PhotoAttachmentSheet = {
   items: PhotoAttachmentItem[];
 };
 
-export type Proposal = {
+export type Organization = {
+  id: number;
+  slug: string;
+  name: string;
+  business_account_note: string;
+  direct_cost_account_note: string;
+  indirect_cost_account_note: string;
+  default_template_code: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Project = {
+  id: number;
+  organization_id: number;
+  code: string;
+  name: string;
+  starts_on: string;
+  ends_on: string;
+  guideline_code: string;
+  direct_budget_total: number;
+  indirect_budget_total: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProposalGuidelineFields = {
+  organization_id: number | null;
+  project_id: number | null;
+  template_code: string;
+  budget_scope: BudgetScope;
+  budget_category: string;
+  budget_item: string;
+  planned_payment_date: string;
+  payment_method: ManagedPaymentMethod;
+  vendor_name: string;
+  vendor_business_number: string;
+  supply_amount: number;
+  vat_amount: number;
+  eligible_amount: number;
+  evidence_checklist: EvidenceChecklistKey[];
+  transfer_note: string;
+  requires_foundation_approval: boolean;
+  compliance_flags: string[];
+};
+
+export type ExpenditureGuidelineFields = {
+  organization_id: number | null;
+  project_id: number | null;
+  template_code: string;
+  budget_scope: BudgetScope;
+  budget_category: string;
+  budget_item: string;
+  payment_method: ManagedPaymentMethod;
+  vendor_business_number: string;
+  evidence_type: ManagedEvidenceType;
+  supply_amount: number;
+  vat_amount: number;
+  eligible_amount: number;
+  attendee_count: number;
+  unit_amount: number;
+  evidence_checklist: EvidenceChecklistKey[];
+  evidence_completion: Partial<Record<EvidenceChecklistKey, boolean>>;
+  compliance_flags: string[];
+  vat_excluded: boolean;
+};
+
+export type Proposal = ProposalGuidelineFields & {
   id: number;
   doc_number: string;
   fund_type: FundType;
@@ -73,7 +147,7 @@ export type Proposal = {
   updated_at: string;
 };
 
-export type Expenditure = {
+export type Expenditure = ExpenditureGuidelineFields & {
   id: number;
   proposal_id: number | null;
   doc_number: string;
@@ -85,7 +159,6 @@ export type Expenditure = {
   payee_address: string;
   payee_company: string;
   payee_name: string;
-  payment_method: string;
   receipt_date: string;
   receipt_name: string;
   items: ExpenditureItem[];

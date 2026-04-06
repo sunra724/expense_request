@@ -1,6 +1,12 @@
-import type { Expenditure, StampSettings } from "@/lib/types";
 import { countFilledEvidenceItems, countFilledPhotoItems } from "@/lib/attachment-sheets";
 import { formatCurrency } from "@/lib/format";
+import {
+  budgetScopeLabel,
+  evidenceChecklistLabel,
+  evidenceTypeLabel,
+  paymentMethodLabel,
+} from "@/lib/guideline";
+import type { Expenditure, StampSettings } from "@/lib/types";
 
 export default function ExpenditurePreview({
   expenditure,
@@ -9,6 +15,10 @@ export default function ExpenditurePreview({
   expenditure: Expenditure;
   settings: StampSettings;
 }) {
+  const pendingChecklist = expenditure.evidence_checklist.filter(
+    (key) => !expenditure.evidence_completion[key],
+  );
+
   return (
     <div className="print-sheet">
       <div className="mb-8 text-center">
@@ -20,12 +30,14 @@ export default function ExpenditurePreview({
         <section className="rounded-2xl border border-slate-200 p-4 text-sm">
           <div className="mb-3 font-semibold">기본 정보</div>
           <div className="space-y-2">
-            <div>연계 품의서: {expenditure.proposal_id ? `#${expenditure.proposal_id}` : "-"}</div>
-            <div>단위사업명: {expenditure.project_name || "-"}</div>
+            <div>기관명: {settings.org_name || "-"}</div>
+            <div>연결 품의서: {expenditure.proposal_id ? `#${expenditure.proposal_id}` : "-"}</div>
+            <div>사업명: {expenditure.project_name || "-"}</div>
             <div>발의일: {expenditure.issue_date || "-"}</div>
             <div>회계기록일: {expenditure.record_date || "-"}</div>
-            <div>지급방법: {expenditure.payment_method || "-"}</div>
-            <div>총 금액: 금 {formatCurrency(expenditure.total_amount)}원</div>
+            <div>지급방법: {paymentMethodLabel(expenditure.payment_method)}</div>
+            <div>증빙유형: {evidenceTypeLabel(expenditure.evidence_type)}</div>
+            <div>총 금액: {formatCurrency(expenditure.total_amount)}원</div>
           </div>
         </section>
 
@@ -41,12 +53,28 @@ export default function ExpenditurePreview({
         </section>
       </div>
 
+      <section className="mb-6 rounded-2xl border border-slate-200 p-4 text-sm">
+        <div className="mb-3 font-semibold">예산 및 지급 정보</div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div>예산구분: {budgetScopeLabel(expenditure.budget_scope)}</div>
+          <div>비목: {expenditure.budget_category || "-"}</div>
+          <div>세목: {expenditure.budget_item || "-"}</div>
+          <div>거래처: {expenditure.payee_company || "-"}</div>
+          <div>수령인: {expenditure.payee_name || "-"}</div>
+          <div>사업자등록번호: {expenditure.vendor_business_number || "-"}</div>
+          <div>공급가액: {formatCurrency(expenditure.supply_amount)}원</div>
+          <div>부가세: {formatCurrency(expenditure.vat_amount)}원</div>
+          <div>집행인정금액: {formatCurrency(expenditure.eligible_amount)}원</div>
+          <div>부가세 제외 처리: {expenditure.vat_excluded ? "예" : "아니오"}</div>
+        </div>
+      </section>
+
       <section className="mb-6">
         <div className="mb-3 text-sm font-semibold">지출 내역</div>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-slate-50">
-              {["연번", "적요", "금액", "비고"].map((label) => (
+              {["번호", "적요", "금액", "비고"].map((label) => (
                 <th key={label} className="border border-slate-200 px-3 py-2">
                   {label}
                 </th>
@@ -63,12 +91,8 @@ export default function ExpenditurePreview({
               </tr>
             ))}
             <tr>
-              <td colSpan={2} className="border border-slate-200 px-3 py-2 text-right font-semibold">
-                합계
-              </td>
-              <td className="border border-slate-200 px-3 py-2 text-right font-semibold">
-                {formatCurrency(expenditure.total_amount)}
-              </td>
+              <td colSpan={2} className="border border-slate-200 px-3 py-2 text-right font-semibold">합계</td>
+              <td className="border border-slate-200 px-3 py-2 text-right font-semibold">{formatCurrency(expenditure.total_amount)}</td>
               <td className="border border-slate-200 px-3 py-2" />
             </tr>
           </tbody>
@@ -76,19 +100,26 @@ export default function ExpenditurePreview({
       </section>
 
       <section className="grid grid-cols-2 gap-4 rounded-2xl border border-slate-200 p-4 text-sm">
-        <div>거래처: {expenditure.payee_company || "-"}</div>
-        <div>수취인: {expenditure.payee_name || "-"}</div>
         <div>주소: {expenditure.payee_address || "-"}</div>
-        <div>영수증: {expenditure.receipt_name || "-"}</div>
+        <div>영수증명: {expenditure.receipt_name || "-"}</div>
+        <div>영수일자: {expenditure.receipt_date || "-"}</div>
+        <div>회의/행사 인원: {expenditure.attendee_count || 0}명</div>
       </section>
 
       <section className="mt-6 rounded-2xl border border-slate-200 p-4 text-sm">
-        <div className="mb-3 font-semibold">첨부철 연동 현황</div>
+        <div className="mb-3 font-semibold">첨부 및 정산 상태</div>
         <div className="space-y-2">
-          <div>증빙서류 첨부철: {countFilledEvidenceItems(expenditure.evidence_sheet)}건</div>
-          <div>증빙사진 첨부철: {countFilledPhotoItems(expenditure.photo_sheet)}건</div>
-          <div className="text-slate-500">
-            카드 전표, 세금계산서, 현금영수증, 영수증과 사진대지는 결의서와 연결된 첨부철 화면에서 관리합니다.
+          <div>증빙서류 첨부: {countFilledEvidenceItems(expenditure.evidence_sheet)}건</div>
+          <div>증빙사진 첨부: {countFilledPhotoItems(expenditure.photo_sheet)}건</div>
+          <div>
+            체크리스트:{" "}
+            {expenditure.evidence_checklist.length
+              ? expenditure.evidence_checklist.map((key) => evidenceChecklistLabel(key)).join(", ")
+              : "-"}
+          </div>
+          <div>
+            미완료 증빙:{" "}
+            {pendingChecklist.length ? pendingChecklist.map((key) => evidenceChecklistLabel(key)).join(", ") : "없음"}
           </div>
         </div>
       </section>
