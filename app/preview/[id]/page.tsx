@@ -3,6 +3,7 @@ import Link from "next/link";
 import ExpenditurePreview from "@/components/ExpenditurePreview";
 import PrintButton from "@/components/PrintButton";
 import { getExpenditure } from "@/lib/db/expenditures";
+import { getProposal } from "@/lib/db/proposals";
 import { getSettings } from "@/lib/db/settings";
 
 export default async function ExpenditurePreviewPage({
@@ -13,6 +14,7 @@ export default async function ExpenditurePreviewPage({
   const { id } = await params;
   const expenditure = await getExpenditure(Number(id));
   if (!expenditure) notFound();
+  const linkedProposal = expenditure.proposal_id ? await getProposal(expenditure.proposal_id) : null;
   const settings = await getSettings();
 
   return (
@@ -31,7 +33,7 @@ export default async function ExpenditurePreviewPage({
           <PrintButton documentTitle={expenditure.doc_number || `지출결의서-${expenditure.id}`} />
         </div>
       </div>
-      <ExpenditurePreview expenditure={expenditure} settings={settings} />
+      <ExpenditurePreview expenditure={expenditure} settings={settings} linkedProposalDocNumber={linkedProposal?.doc_number || ""} />
     </div>
   );
 }

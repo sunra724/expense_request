@@ -11,9 +11,11 @@ import type { Expenditure, StampSettings } from "@/lib/types";
 export default function ExpenditurePreview({
   expenditure,
   settings,
+  linkedProposalDocNumber = "",
 }: {
   expenditure: Expenditure;
   settings: StampSettings;
+  linkedProposalDocNumber?: string;
 }) {
   const pendingChecklist = expenditure.evidence_checklist.filter(
     (key) => !expenditure.evidence_completion[key],
@@ -31,7 +33,7 @@ export default function ExpenditurePreview({
           <div className="mb-3 font-semibold">기본 정보</div>
           <div className="space-y-2">
             <div>기관명: {settings.org_name || "-"}</div>
-            <div>연결 품의서: {expenditure.proposal_id ? `#${expenditure.proposal_id}` : "-"}</div>
+            <div>연결 품의서: {linkedProposalDocNumber || (expenditure.proposal_id ? `#${expenditure.proposal_id}` : "-")}</div>
             <div>사업명: {expenditure.project_name || "-"}</div>
             <div>발의일: {expenditure.issue_date || "-"}</div>
             <div>회계기록일: {expenditure.record_date || "-"}</div>
