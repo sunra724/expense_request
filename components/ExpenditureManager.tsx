@@ -88,6 +88,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
   const [editingId, setEditingId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [linkedProposalName, setLinkedProposalName] = useState("");
+  const [linkedProposalDocNumber, setLinkedProposalDocNumber] = useState("");
   const [prefilledFromProposalId, setPrefilledFromProposalId] = useState<number | null>(null);
 
   const organizations = context.organizations;
@@ -137,6 +138,30 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
   async function fetchList() {
     const response = await fetch("/api/expenditures");
     setItems(await response.json());
+  }
+
+  async function loadLinkedProposal(proposalId: number | null, fallbackProjectName = "") {
+    if (!proposalId) {
+      setLinkedProposalName("");
+      setLinkedProposalDocNumber("");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/proposals/${proposalId}`);
+      const proposal: Proposal = await response.json();
+      if (!proposal?.id) {
+        setLinkedProposalName(fallbackProjectName);
+        setLinkedProposalDocNumber("");
+        return;
+      }
+
+      setLinkedProposalName(proposal.project_name || fallbackProjectName);
+      setLinkedProposalDocNumber(proposal.doc_number || "");
+    } catch {
+      setLinkedProposalName(fallbackProjectName);
+      setLinkedProposalDocNumber("");
+    }
   }
 
   useEffect(() => {
@@ -212,6 +237,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
           vat_excluded: false,
         });
         setLinkedProposalName(proposal.project_name);
+        setLinkedProposalDocNumber(proposal.doc_number || "");
         setPrefilledFromProposalId(proposal.id);
         setOpen(true);
       });
@@ -225,7 +251,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     const data = await response.json();
     setEditingId(id);
     setForm(data);
-    setLinkedProposalName(data.proposal_id ? data.project_name : "");
+    await loadLinkedProposal(data.proposal_id ?? null, data.project_name ?? "");
     setOpen(true);
   }
 
@@ -243,6 +269,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     setEditingId(null);
     setForm(blankForm(organizations, projects));
     setLinkedProposalName("");
+    setLinkedProposalDocNumber("");
     fetchList();
   }
 
@@ -306,7 +333,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
           <p className="mt-2 max-w-2xl text-sm text-slate-600">실제 지급내역과 증빙 완료 상태를 함께 관리합니다.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button className="btn btn-primary" onClick={() => { setEditingId(null); setLinkedProposalName(""); setForm(blankForm(organizations, projects)); setOpen(true); }}>
+          <button className="btn btn-primary" onClick={() => { setEditingId(null); setLinkedProposalName(""); setLinkedProposalDocNumber(""); setForm(blankForm(organizations, projects)); setOpen(true); }}>
             <Plus className="h-4 w-4" />새 결의서
           </button>
           {selected.length > 0 ? <Link className="btn btn-secondary" href={batchHref} target="_blank"><Printer className="h-4 w-4" />선택 {selected.length}건 인쇄</Link> : null}
@@ -321,12 +348,12 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
 
       <section className="panel overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">선택</th><th className="px-4 py-3">사업</th><th className="px-4 py-3">예산항목</th><th className="px-4 py-3">지급방법</th><th className="px-4 py-3">증빙</th><th className="px-4 py-3 text-right">금액</th><th className="px-4 py-3">상태</th><th className="px-4 py-3">액션</th></tr></thead><tbody>{items.map((item) => { const pending = item.evidence_checklist.filter((key) => !item.evidence_completion[key]).length; return <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><input type="checkbox" checked={selected.includes(item.id)} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} /></td><td className="px-4 py-3"><div className="font-medium">{item.project_name}</div><div className="mt-1 text-xs text-slate-500">품의 {item.proposal_id ? `#${item.proposal_id}` : "없음"}</div></td><td className="px-4 py-3"><div>{item.budget_category || "-"}</div><div className="mt-1 text-xs text-slate-500">{budgetScopeLabel(item.budget_scope)} / {item.budget_item || "-"}</div></td><td className="px-4 py-3">{paymentMethodLabel(item.payment_method)}</td><td className="px-4 py-3"><div className="text-xs text-slate-600">첨부 {countFilledEvidenceItems(item.evidence_sheet)} / 사진 {countFilledPhotoItems(item.photo_sheet)}</div><div className={`mt-1 text-xs ${pending ? "text-amber-600" : "text-emerald-600"}`}>{pending ? `${pending}개 미완료` : "체크 완료"}</div></td><td className="px-4 py-3 text-right">{formatCurrency(item.total_amount)}원</td><td className="px-4 py-3"><span className={`badge ${item.status === "finalized" ? "badge-finalized" : "badge-draft"}`}>{item.status === "finalized" ? "완료" : "작성중"}</span></td><td className="px-4 py-3"><div className="flex gap-2"><Link className="btn btn-secondary !px-3 !py-2" href={`/preview/${item.id}`} target="_blank"><Eye className="h-4 w-4" /></Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/evidence`}>증빙</Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/photos`}>사진</Link><button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>수정</button><button className="btn btn-danger !px-3 !py-2" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4" /></button></div></td></tr>; })}</tbody></table></div></section>
 
-      {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4"><div className="panel max-h-[92vh] w-full max-w-6xl overflow-y-auto px-6 py-6"><div className="mb-6 flex items-center justify-between"><div><div className="text-sm text-slate-500">지출결의서</div><h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>{form.proposal_id ? <p className="mt-2 text-sm text-teal-700">연결 품의서 #{form.proposal_id}{linkedProposalName ? ` · ${linkedProposalName}` : ""}</p> : null}</div><button className="btn btn-secondary" onClick={() => setOpen(false)}>닫기</button></div>
+      {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4"><div className="panel max-h-[92vh] w-full max-w-6xl overflow-y-auto px-6 py-6"><div className="mb-6 flex items-center justify-between"><div><div className="text-sm text-slate-500">지출결의서</div><h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>{form.proposal_id ? <p className="mt-2 text-sm text-teal-700">연결 품의서 {linkedProposalDocNumber || `#${form.proposal_id}`}{linkedProposalName ? ` · ${linkedProposalName}` : ""}</p> : null}</div><button className="btn btn-secondary" onClick={() => setOpen(false)}>닫기</button></div>
 
         <div className="grid gap-4 md:grid-cols-4">
           <label className="block text-sm">지원기관<select className="select mt-2" value={form.organization_id ?? ""} onChange={(event) => updateOrganization(Number(event.target.value))}><option value="">지원기관 선택</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
           <label className="block text-sm">사업<select className="select mt-2" value={form.project_id ?? ""} onChange={(event) => updateProject(Number(event.target.value))}><option value="">사업 선택</option>{availableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-          <label className="block text-sm">연결 품의서<input className="field mt-2" type="number" value={form.proposal_id ?? ""} onChange={(event) => setForm({ ...form, proposal_id: event.target.value ? Number(event.target.value) : null })} /></label>
+          <label className="block text-sm">연결 품의서<input className="field mt-2" value={linkedProposalDocNumber || (form.proposal_id ? `#${form.proposal_id}` : "")} readOnly placeholder="연결 품의서 없음" /></label>
           <label className="block text-sm">문서번호<input className="field mt-2" value={form.doc_number} onChange={(event) => setForm({ ...form, doc_number: event.target.value })} /><div className="mt-1 text-xs text-slate-500">기본 형식: `다다름-직접-결의-26-` 또는 `다다름-간접-결의-26-`</div></label>
           <label className="block text-sm md:col-span-2">사업명<input className="field mt-2" value={form.project_name} onChange={(event) => setForm({ ...form, project_name: event.target.value })} /></label>
           <label className="block text-sm">발의일<input className="field mt-2" type="date" value={form.issue_date} onChange={(event) => setForm({ ...form, issue_date: event.target.value, doc_number: applyDocumentPrefix(form.doc_number, "expenditure", form.budget_scope, event.target.value) })} /></label>
