@@ -7,9 +7,7 @@ export type BudgetScope = (typeof budgetScopeOptions)[number]["value"];
 
 export const paymentMethodOptions = [
   { value: "corporate_card", label: "법인카드" },
-  { value: "check_card", label: "체크카드" },
   { value: "account_transfer", label: "계좌이체" },
-  { value: "youth_transfer", label: "청년 실비지급" },
 ] as const;
 
 export type ManagedPaymentMethod = (typeof paymentMethodOptions)[number]["value"];
@@ -19,11 +17,20 @@ export function normalizePaymentMethod(value: unknown): ManagedPaymentMethod {
   const byValue = paymentMethodOptions.find((option) => option.value === text);
   if (byValue) return byValue.value;
 
+  if (text === "check_card" || text === "체크카드") return "corporate_card";
+  if (text === "youth_transfer" || text === "청년 실비지급" || text === "청년 개인 계좌이체") {
+    return "account_transfer";
+  }
+
   const byLabel = paymentMethodOptions.find((option) => option.label === text);
   return byLabel?.value ?? "account_transfer";
 }
 
 export function paymentMethodLabel(value: string) {
+  if (value === "check_card" || value === "체크카드") return "법인카드";
+  if (value === "youth_transfer" || value === "청년 실비지급" || value === "청년 개인 계좌이체") {
+    return "계좌이체";
+  }
   return paymentMethodOptions.find((option) => option.value === value)?.label ?? value;
 }
 
@@ -78,10 +85,7 @@ export function defaultEvidenceChecklist(paymentMethod: ManagedPaymentMethod): E
 
   switch (paymentMethod) {
     case "corporate_card":
-    case "check_card":
       return [...common, "vendor_registration", "vendor_bankbook", "card_receipt", "shopping_capture", "transaction_statement"];
-    case "youth_transfer":
-      return [...common, "vendor_bankbook", "transaction_statement"];
     case "account_transfer":
     default:
       return [...common, "vendor_registration", "vendor_bankbook", "tax_invoice", "transaction_statement"];

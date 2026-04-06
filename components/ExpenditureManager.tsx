@@ -11,6 +11,7 @@ import {
   createPhotoAttachmentSheet,
 } from "@/lib/attachment-sheets";
 import { createDefaultExpenditureGuidelineFields } from "@/lib/document-defaults";
+import { applyDocumentPrefix } from "@/lib/document-number";
 import { formatCurrency, today } from "@/lib/format";
 import {
   budgetScopeLabel,
@@ -33,7 +34,7 @@ function blankForm(organizations: Organization[], projects: Project[]): Expendit
     organizations.find((item) => item.id === project?.organization_id) ?? organizations[0] ?? null;
   return {
     proposal_id: null,
-    doc_number: "",
+    doc_number: applyDocumentPrefix("", "expenditure", "direct", today()),
     project_name: project?.name ?? "",
     expense_category: "",
     issue_date: today(),
@@ -61,6 +62,7 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
     total_amount: totalAmount,
     supply_amount: form.supply_amount || Math.max(totalAmount - form.vat_amount, 0),
     eligible_amount: form.eligible_amount || Math.max(totalAmount - (form.vat_excluded ? form.vat_amount : 0), 0),
+    doc_number: applyDocumentPrefix(form.doc_number, "expenditure", form.budget_scope, form.issue_date),
     evidence_checklist: checklist,
     evidence_completion: Object.fromEntries(
       Object.entries(form.evidence_completion).filter(([key]) =>
@@ -125,7 +127,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
         if (!active || !proposal?.id) return;
         setForm({
           proposal_id: proposal.id,
-          doc_number: "",
+          doc_number: applyDocumentPrefix("", "expenditure", proposal.budget_scope, today()),
           project_name: proposal.project_name,
           expense_category: proposal.items[0]?.expense_category ?? proposal.budget_item ?? "",
           issue_date: today(),
@@ -206,6 +208,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       project_id: project?.id ?? null,
       project_name: project?.name ?? current.project_name,
       template_code: organization?.default_template_code ?? current.template_code,
+      doc_number: applyDocumentPrefix(current.doc_number, "expenditure", current.budget_scope, current.issue_date),
       evidence_sheet: createEvidenceAttachmentSheet(project?.name ?? current.project_name),
       photo_sheet: createPhotoAttachmentSheet(project?.name ?? current.project_name),
     }));
@@ -220,6 +223,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       project_id: project?.id ?? null,
       project_name: project?.name ?? current.project_name,
       template_code: organization?.default_template_code ?? current.template_code,
+      doc_number: applyDocumentPrefix(current.doc_number, "expenditure", current.budget_scope, current.issue_date),
       evidence_sheet: createEvidenceAttachmentSheet(project?.name ?? current.project_name),
       photo_sheet: createPhotoAttachmentSheet(project?.name ?? current.project_name),
     }));
@@ -267,17 +271,17 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4"><div className="panel max-h-[92vh] w-full max-w-6xl overflow-y-auto px-6 py-6"><div className="mb-6 flex items-center justify-between"><div><div className="text-sm text-slate-500">지출결의서</div><h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>{form.proposal_id ? <p className="mt-2 text-sm text-teal-700">연결 품의서 #{form.proposal_id}{linkedProposalName ? ` · ${linkedProposalName}` : ""}</p> : null}</div><button className="btn btn-secondary" onClick={() => setOpen(false)}>닫기</button></div>
 
         <div className="grid gap-4 md:grid-cols-4">
-          <label className="block text-sm">기관<select className="select mt-2" value={form.organization_id ?? ""} onChange={(event) => updateOrganization(Number(event.target.value))}><option value="">기관 선택</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
+          <label className="block text-sm">지원기관<select className="select mt-2" value={form.organization_id ?? ""} onChange={(event) => updateOrganization(Number(event.target.value))}><option value="">지원기관 선택</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
           <label className="block text-sm">사업<select className="select mt-2" value={form.project_id ?? ""} onChange={(event) => updateProject(Number(event.target.value))}><option value="">사업 선택</option>{availableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
           <label className="block text-sm">연결 품의서<input className="field mt-2" type="number" value={form.proposal_id ?? ""} onChange={(event) => setForm({ ...form, proposal_id: event.target.value ? Number(event.target.value) : null })} /></label>
-          <label className="block text-sm">문서번호<input className="field mt-2" value={form.doc_number} onChange={(event) => setForm({ ...form, doc_number: event.target.value })} /></label>
+          <label className="block text-sm">문서번호<input className="field mt-2" value={form.doc_number} onChange={(event) => setForm({ ...form, doc_number: event.target.value })} /><div className="mt-1 text-xs text-slate-500">기본 형식: `다다름-직접-결의-26-` 또는 `다다름-간접-결의-26-`</div></label>
           <label className="block text-sm md:col-span-2">사업명<input className="field mt-2" value={form.project_name} onChange={(event) => setForm({ ...form, project_name: event.target.value })} /></label>
-          <label className="block text-sm">발의일<input className="field mt-2" type="date" value={form.issue_date} onChange={(event) => setForm({ ...form, issue_date: event.target.value })} /></label>
+          <label className="block text-sm">발의일<input className="field mt-2" type="date" value={form.issue_date} onChange={(event) => setForm({ ...form, issue_date: event.target.value, doc_number: applyDocumentPrefix(form.doc_number, "expenditure", form.budget_scope, event.target.value) })} /></label>
           <label className="block text-sm">기록일<input className="field mt-2" type="date" value={form.record_date} onChange={(event) => setForm({ ...form, record_date: event.target.value })} /></label>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-4">
-          <label className="block text-sm">예산구분<select className="select mt-2" value={form.budget_scope} onChange={(event) => setForm({ ...form, budget_scope: event.target.value as ExpenditureInput["budget_scope"] })}>{budgetScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="block text-sm">예산구분<select className="select mt-2" value={form.budget_scope} onChange={(event) => setForm({ ...form, budget_scope: event.target.value as ExpenditureInput["budget_scope"], doc_number: applyDocumentPrefix(form.doc_number, "expenditure", event.target.value as ExpenditureInput["budget_scope"], form.issue_date) })}>{budgetScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className="block text-sm">비목<input className="field mt-2" value={form.budget_category} onChange={(event) => setForm({ ...form, budget_category: event.target.value })} /></label>
           <label className="block text-sm">세목<input className="field mt-2" value={form.budget_item} onChange={(event) => setForm({ ...form, budget_item: event.target.value })} /></label>
           <label className="block text-sm">적요<input className="field mt-2" value={form.expense_category} onChange={(event) => setForm({ ...form, expense_category: event.target.value })} /></label>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRightLeft, Eye, Plus, Printer, Trash2 } from "lucide-react";
 import EvidenceChecklistSelector from "@/components/EvidenceChecklistSelector";
 import { createDefaultProposalGuidelineFields } from "@/lib/document-defaults";
+import { applyDocumentPrefix } from "@/lib/document-number";
 import { formatCurrency, today } from "@/lib/format";
 import {
   budgetScopeLabel,
@@ -39,7 +40,7 @@ function blankProposal(organizations: Organization[], projects: Project[]): Prop
     organizations.find((item) => item.id === project?.organization_id) ?? organizations[0] ?? null;
 
   return {
-    doc_number: "",
+    doc_number: applyDocumentPrefix("", "proposal", "direct", today()),
     fund_type: "grant",
     project_name: project?.name ?? "",
     project_period: buildProjectPeriod(project),
@@ -66,6 +67,7 @@ function normalizeProposalPayload(form: ProposalInput, totalAmount: number): Pro
     evidence_checklist: form.evidence_checklist.length
       ? form.evidence_checklist
       : defaultEvidenceChecklist(form.payment_method),
+    doc_number: applyDocumentPrefix(form.doc_number, "proposal", form.budget_scope, form.submission_date),
   };
 }
 
@@ -192,6 +194,7 @@ export default function ProposalManager() {
       project_id: nextProject?.id ?? null,
       project_name: nextProject?.name ?? "",
       project_period: nextProject ? buildProjectPeriod(nextProject) : "",
+      doc_number: applyDocumentPrefix(current.doc_number, "proposal", current.budget_scope, current.submission_date),
     }));
   }
 
@@ -207,6 +210,7 @@ export default function ProposalManager() {
       project_name: project?.name ?? "",
       project_period: project ? buildProjectPeriod(project) : current.project_period,
       template_code: organization?.default_template_code ?? current.template_code,
+      doc_number: applyDocumentPrefix(current.doc_number, "proposal", current.budget_scope, current.submission_date),
     }));
   }
 
@@ -228,7 +232,7 @@ export default function ProposalManager() {
           <div className="mb-2 text-sm uppercase tracking-[0.24em] text-slate-500">Proposal Workspace</div>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">지출품의서 관리</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            기관과 사업을 기준으로 지출품의서를 작성하고, 예산 비목과 증빙 요건을 함께 관리합니다.
+            지원기관과 사업을 기준으로 지출품의서를 작성하고, 예산 비목과 증빙 요건을 함께 관리합니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -265,7 +269,7 @@ export default function ProposalManager() {
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-3">선택</th>
-                <th className="px-4 py-3">기관/사업</th>
+                <th className="px-4 py-3">지원기관/사업</th>
                 <th className="px-4 py-3">예산항목</th>
                 <th className="px-4 py-3">지급방법</th>
                 <th className="px-4 py-3 text-right">금액</th>
@@ -350,13 +354,13 @@ export default function ProposalManager() {
 
             <div className="grid gap-4 md:grid-cols-4">
               <label className="block text-sm">
-                기관
+                지원기관
                 <select
                   className="select mt-2"
                   value={form.organization_id ?? ""}
                   onChange={(event) => updateOrganization(Number(event.target.value))}
                 >
-                  <option value="">기관 선택</option>
+                  <option value="">지원기관 선택</option>
                   {organizations.map((organization) => (
                     <option key={organization.id} value={organization.id}>
                       {organization.name}
@@ -397,7 +401,18 @@ export default function ProposalManager() {
                   className="field mt-2"
                   type="date"
                   value={form.submission_date}
-                  onChange={(event) => setForm({ ...form, submission_date: event.target.value })}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      submission_date: event.target.value,
+                      doc_number: applyDocumentPrefix(
+                        form.doc_number,
+                        "proposal",
+                        form.budget_scope,
+                        event.target.value,
+                      ),
+                    })
+                  }
                 />
               </label>
               <label className="block text-sm md:col-span-2">
@@ -423,6 +438,9 @@ export default function ProposalManager() {
                   value={form.doc_number}
                   onChange={(event) => setForm({ ...form, doc_number: event.target.value })}
                 />
+                <div className="mt-1 text-xs text-slate-500">
+                  기본 형식: `다다름-직접-품의-26-` 또는 `다다름-간접-품의-26-`
+                </div>
               </label>
             </div>
 
@@ -432,7 +450,18 @@ export default function ProposalManager() {
                 <select
                   className="select mt-2"
                   value={form.budget_scope}
-                  onChange={(event) => setForm({ ...form, budget_scope: event.target.value as ProposalInput["budget_scope"] })}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      budget_scope: event.target.value as ProposalInput["budget_scope"],
+                      doc_number: applyDocumentPrefix(
+                        form.doc_number,
+                        "proposal",
+                        event.target.value as ProposalInput["budget_scope"],
+                        form.submission_date,
+                      ),
+                    })
+                  }
                 >
                   {budgetScopeOptions.map((option) => (
                     <option key={option.value} value={option.value}>

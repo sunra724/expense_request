@@ -1,4 +1,3 @@
-import { today } from "@/lib/format";
 import {
   createEvidenceAttachmentSheet,
   createPhotoAttachmentSheet,
@@ -7,6 +6,7 @@ import {
   createDefaultExpenditureGuidelineFields,
   createDefaultProposalGuidelineFields,
 } from "@/lib/document-defaults";
+import { today } from "@/lib/format";
 import { defaultEvidenceChecklist } from "@/lib/guideline";
 import type {
   Expenditure,
@@ -18,7 +18,7 @@ import type {
   StampSettings,
 } from "@/lib/types";
 
-let organizationId = 2;
+let organizationId = 3;
 let projectId = 2;
 let proposalId = 3;
 let expenditureId = 3;
@@ -28,9 +28,20 @@ const now = () => new Date().toISOString();
 let organizations: Organization[] = [
   {
     id: 1,
+    slug: "youth-foundation",
+    name: "청년재단",
+    business_account_note: "지원기관 기준 사업비 관리",
+    direct_cost_account_note: "직접비 기준 확인",
+    indirect_cost_account_note: "간접비 기준 확인",
+    default_template_code: "default",
+    created_at: now(),
+    updated_at: now(),
+  },
+  {
+    id: 2,
     slug: "soilab",
     name: "협동조합 soilab",
-    business_account_note: "사업비관리 전용 계좌 사용",
+    business_account_note: "운영기관 내부 회계 참고용",
     direct_cost_account_note: "직접비 계좌 별도 관리",
     indirect_cost_account_note: "간접비 계좌 별도 관리",
     default_template_code: "default",
@@ -73,7 +84,7 @@ let proposals: Proposal[] = [
     doc_number: "P-2026-001",
     fund_type: "grant",
     project_name: "2026 청년다다름사업",
-    project_period: "2026.04.02 ~ 2026.04.03",
+    project_period: "2026-01-01 ~ 2026-12-31",
     total_amount: 950000,
     related_plan: "사업 운영 계획서 1부",
     org_name: "협동조합 soilab",

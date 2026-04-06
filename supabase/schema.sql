@@ -142,16 +142,16 @@ create table if not exists expenditure_guideline_meta (
 
 insert into organizations (slug, name, business_account_note, direct_cost_account_note, indirect_cost_account_note)
 values (
-  'soilab',
-  '협동조합 soilab',
-  '사업비관리 전용 계좌 사용',
-  '직접비 계좌 별도 관리',
-  '간접비 계좌 별도 관리'
+  'youth-foundation',
+  '청년재단',
+  '지원기관 기준 사업비 관리',
+  '직접비 기준 확인',
+  '간접비 기준 확인'
 )
 on conflict (slug) do nothing;
 
 insert into projects (organization_id, code, name, starts_on, ends_on, direct_budget_total, indirect_budget_total)
 select id, 'dadareum-2026', '2026 청년다다름사업', '2026-01-01', '2026-12-31', 8000000, 2000000
 from organizations
-where slug = 'soilab'
+where slug = 'youth-foundation'
 on conflict (organization_id, code) do nothing;
