@@ -16,8 +16,11 @@ export default async function ProposalPreviewPage({
 
   return (
     <div className="space-y-4">
-      <div className="no-print flex justify-end">
-        <PrintButton />
+      <div className="no-print flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-slate-500">
+          버튼을 누른 뒤 브라우저 인쇄 창에서 `PDF로 저장`을 선택하면 됩니다.
+        </div>
+        <PrintButton documentTitle={proposal.doc_number || `지출품의서-${proposal.id}`} />
       </div>
       <ProposalPreview proposal={proposal} settings={settings} />
     </div>
