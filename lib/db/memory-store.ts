@@ -168,6 +168,8 @@ let expenditures: Expenditure[] = [
           related_item: "행사 운영",
           file_note: "사진 파일 별도 보관",
           note: "",
+          image_name: "",
+          image_data_url: "",
         },
       ],
     },

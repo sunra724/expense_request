@@ -60,6 +60,8 @@ export function createPhotoAttachmentItem(): PhotoAttachmentItem {
     related_item: "",
     file_note: "",
     note: "",
+    image_name: "",
+    image_data_url: "",
   };
 }
 
@@ -121,6 +123,8 @@ export function normalizePhotoAttachmentSheet(value: unknown, projectName = ""):
           related_item: asText(item.related_item),
           file_note: asText(item.file_note),
           note: asText(item.note),
+          image_name: asText(item.image_name),
+          image_data_url: asText(item.image_data_url),
         };
       })
     : [];
@@ -141,6 +145,14 @@ export function countFilledEvidenceItems(sheet: EvidenceAttachmentSheet) {
 
 export function countFilledPhotoItems(sheet: PhotoAttachmentSheet) {
   return sheet.items.filter(
-    (item) => item.title || item.location || item.description || item.related_item || item.file_note || item.note,
+    (item) =>
+      item.title ||
+      item.location ||
+      item.description ||
+      item.related_item ||
+      item.file_note ||
+      item.note ||
+      item.image_name ||
+      item.image_data_url,
   ).length;
 }
