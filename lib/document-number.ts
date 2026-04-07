@@ -47,7 +47,7 @@ export function splitDocumentNumber(
 
   return {
     prefix,
-    suffix: matched[4]?.trim() ?? "",
+    suffix: matched[3]?.trim() ?? "",
   };
 }
 
