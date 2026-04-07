@@ -116,6 +116,53 @@ function applyProposalToExpenditureForm(
   };
 }
 
+function mergeProposalIntoExistingExpenditure(
+  current: ExpenditureInput,
+  proposal: Proposal,
+): ExpenditureInput {
+  const proposalBased = applyProposalToExpenditureForm(proposal, current);
+
+  return {
+    ...current,
+    proposal_id: proposal.id,
+    project_name: current.project_name || proposalBased.project_name,
+    expense_category: current.expense_category || proposalBased.expense_category,
+    total_amount: current.total_amount || proposalBased.total_amount,
+    payee_company: current.payee_company || proposalBased.payee_company,
+    payee_name: current.payee_name || proposalBased.payee_name,
+    receipt_name: current.receipt_name || proposalBased.receipt_name,
+    organization_id: current.organization_id ?? proposalBased.organization_id,
+    project_id: current.project_id ?? proposalBased.project_id,
+    template_code: current.template_code || proposalBased.template_code,
+    budget_scope: current.budget_scope || proposalBased.budget_scope,
+    budget_category: current.budget_category || proposalBased.budget_category,
+    budget_item: current.budget_item || proposalBased.budget_item,
+    payment_method: current.payment_method || proposalBased.payment_method,
+    vendor_business_number: current.vendor_business_number || proposalBased.vendor_business_number,
+    supply_amount: current.supply_amount || proposalBased.supply_amount,
+    vat_amount: current.vat_amount || proposalBased.vat_amount,
+    eligible_amount: current.eligible_amount || proposalBased.eligible_amount,
+    items:
+      current.items.length &&
+      current.items.some((item) => item.description || item.amount || item.note)
+        ? current.items
+        : proposalBased.items,
+    evidence_checklist: current.evidence_checklist.length
+      ? current.evidence_checklist
+      : proposalBased.evidence_checklist,
+    evidence_completion: buildChecklistCompletion(
+      current.evidence_checklist.length ? current.evidence_checklist : proposalBased.evidence_checklist,
+      current.evidence_completion,
+    ),
+    evidence_sheet:
+      countFilledEvidenceItems(current.evidence_sheet) > 0
+        ? current.evidence_sheet
+        : proposalBased.evidence_sheet,
+    photo_sheet:
+      countFilledPhotoItems(current.photo_sheet) > 0 ? current.photo_sheet : proposalBased.photo_sheet,
+  };
+}
+
 function blankForm(organizations: Organization[], projects: Project[]): ExpenditureInput {
   const project = projects[0] ?? null;
   const organization =
@@ -339,8 +386,26 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     const response = await fetch(`/api/expenditures/${id}`);
     const data = await response.json();
     setEditingId(id);
-    setForm(data);
-    await loadLinkedProposal(data.proposal_id ?? null, data.project_name ?? "");
+    if (data.proposal_id) {
+      try {
+        const proposalResponse = await fetch(`/api/proposals/${data.proposal_id}`);
+        const proposal: Proposal = await proposalResponse.json();
+        if (proposal?.id) {
+          setForm(mergeProposalIntoExistingExpenditure(data, proposal));
+          setLinkedProposalName(proposal.project_name || data.project_name || "");
+          setLinkedProposalDocNumber(proposal.doc_number || "");
+        } else {
+          setForm(data);
+          await loadLinkedProposal(data.proposal_id ?? null, data.project_name ?? "");
+        }
+      } catch {
+        setForm(data);
+        await loadLinkedProposal(data.proposal_id ?? null, data.project_name ?? "");
+      }
+    } else {
+      setForm(data);
+      await loadLinkedProposal(data.proposal_id ?? null, data.project_name ?? "");
+    }
     setOpen(true);
   }
 
