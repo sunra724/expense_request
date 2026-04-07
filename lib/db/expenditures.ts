@@ -10,6 +10,7 @@ import {
   normalizeExpenditureGuidelineMeta,
   upsertExpenditureGuidelineMeta,
 } from "@/lib/db/guideline-metadata";
+import { embedExpenditureInlineMeta, extractExpenditureInlineMeta } from "@/lib/db/inline-guideline-meta";
 import {
   batchExpenditureMemory,
   createExpenditureMemory,
@@ -45,7 +46,8 @@ function baseGuidelineFallback(row: Record<string, unknown>) {
 
 function normalizeExpenditure(row: Record<string, unknown>, meta?: unknown | null): Expenditure {
   const projectName = String(row.project_name ?? "");
-  const guideline = normalizeExpenditureGuidelineMeta(meta, baseGuidelineFallback(row));
+  const inline = extractExpenditureInlineMeta(row.items);
+  const guideline = normalizeExpenditureGuidelineMeta(meta ?? inline.meta, baseGuidelineFallback(row));
 
   return {
     id: Number(row.id),
@@ -61,7 +63,7 @@ function normalizeExpenditure(row: Record<string, unknown>, meta?: unknown | nul
     payee_name: String(row.payee_name ?? ""),
     receipt_date: String(row.receipt_date ?? ""),
     receipt_name: String(row.receipt_name ?? ""),
-    items: Array.isArray(row.items) ? (row.items as Expenditure["items"]) : [],
+    items: inline.items,
     evidence_sheet: normalizeEvidenceAttachmentSheet(row.evidence_sheet, projectName),
     photo_sheet: normalizePhotoAttachmentSheet(row.photo_sheet, projectName),
     status: (row.status as Expenditure["status"]) ?? "draft",
@@ -86,7 +88,7 @@ function toExpenditureRow(input: ExpenditureInput) {
     payment_method: paymentMethodLabel(input.payment_method),
     receipt_date: input.receipt_date || null,
     receipt_name: input.receipt_name,
-    items: input.items,
+    items: embedExpenditureInlineMeta(input.items, input),
     evidence_sheet: input.evidence_sheet,
     photo_sheet: input.photo_sheet,
     status: input.status,

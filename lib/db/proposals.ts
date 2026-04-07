@@ -6,6 +6,7 @@ import {
   normalizeProposalGuidelineMeta,
   upsertProposalGuidelineMeta,
 } from "@/lib/db/guideline-metadata";
+import { embedProposalInlineMeta, extractProposalInlineMeta } from "@/lib/db/inline-guideline-meta";
 import {
   batchProposalMemory,
   createProposalMemory,
@@ -41,7 +42,8 @@ function baseGuidelineFallback(row: Record<string, unknown>) {
 }
 
 function normalizeProposal(row: Record<string, unknown>, meta?: unknown | null): Proposal {
-  const guideline = normalizeProposalGuidelineMeta(meta, baseGuidelineFallback(row));
+  const inline = extractProposalInlineMeta(row.items);
+  const guideline = normalizeProposalGuidelineMeta(meta ?? inline.meta, baseGuidelineFallback(row));
 
   return {
     id: Number(row.id),
@@ -53,7 +55,7 @@ function normalizeProposal(row: Record<string, unknown>, meta?: unknown | null):
     related_plan: String(row.related_plan ?? ""),
     org_name: String(row.org_name ?? ""),
     submission_date: String(row.submission_date ?? ""),
-    items: Array.isArray(row.items) ? (row.items as Proposal["items"]) : [],
+    items: inline.items,
     status: (row.status as Proposal["status"]) ?? "draft",
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
@@ -71,7 +73,7 @@ function toProposalRow(input: ProposalInput) {
     related_plan: input.related_plan,
     org_name: input.org_name,
     submission_date: input.submission_date || null,
-    items: input.items,
+    items: embedProposalInlineMeta(input.items, input),
     status: input.status,
   };
 }
