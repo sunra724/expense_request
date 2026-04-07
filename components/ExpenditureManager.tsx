@@ -12,7 +12,7 @@ import {
   createPhotoAttachmentSheet,
 } from "@/lib/attachment-sheets";
 import { createDefaultExpenditureGuidelineFields } from "@/lib/document-defaults";
-import { applyDocumentPrefix } from "@/lib/document-number";
+import { applyDocumentPrefix, hasDocumentNumberSuffix } from "@/lib/document-number";
 import { formatCurrency, mergeEligibleAmount, splitVatFromTotal, today } from "@/lib/format";
 import {
   buildEvidenceChecklist,
@@ -323,6 +323,11 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
   }
 
   async function save(status: Expenditure["status"]) {
+    if (!hasDocumentNumberSuffix(form.doc_number, "expenditure", form.budget_scope, form.issue_date)) {
+      window.alert("문서번호 뒤 번호까지 입력한 뒤 저장해주세요. 예: 다다름-간접-결의-26-0330-01");
+      return;
+    }
+
     if (status === "finalized" && pendingChecklist.length > 0) {
       window.alert("필수 증빙 완료 체크가 남아 있습니다.");
       return;

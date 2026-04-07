@@ -6,7 +6,7 @@ import { ArrowRightLeft, Eye, Plus, Printer, Trash2 } from "lucide-react";
 import CurrencyInput from "@/components/CurrencyInput";
 import EvidenceChecklistSelector from "@/components/EvidenceChecklistSelector";
 import { createDefaultProposalGuidelineFields } from "@/lib/document-defaults";
-import { applyDocumentPrefix } from "@/lib/document-number";
+import { applyDocumentPrefix, hasDocumentNumberSuffix } from "@/lib/document-number";
 import { formatCurrency, mergeEligibleAmount, splitVatFromTotal, today } from "@/lib/format";
 import {
   buildEvidenceChecklist,
@@ -227,6 +227,11 @@ export default function ProposalManager() {
   }
 
   async function save(status: Proposal["status"]) {
+    if (!hasDocumentNumberSuffix(form.doc_number, "proposal", form.budget_scope, form.submission_date)) {
+      window.alert("문서번호 뒤 번호까지 입력한 뒤 저장해주세요. 예: 다다름-간접-품의-26-0330-01");
+      return;
+    }
+
     const payload = normalizeProposalPayload({ ...form, status }, totalAmount);
     await fetch(editingId ? `/api/proposals/${editingId}` : "/api/proposals", {
       method: editingId ? "PUT" : "POST",
