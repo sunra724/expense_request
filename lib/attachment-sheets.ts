@@ -60,8 +60,7 @@ export function createPhotoAttachmentItem(): PhotoAttachmentItem {
     related_item: "",
     file_note: "",
     note: "",
-    image_name: "",
-    image_data_url: "",
+    images: [],
   };
 }
 
@@ -114,6 +113,28 @@ export function normalizePhotoAttachmentSheet(value: unknown, projectName = ""):
   const items = Array.isArray(record.items)
     ? record.items.map((entry) => {
         const item = asRecord(entry);
+        const images = Array.isArray(item.images)
+          ? item.images
+              .map((imageEntry) => {
+                const image = asRecord(imageEntry);
+                return {
+                  name: asText(image.name),
+                  data_url: asText(image.data_url),
+                };
+              })
+              .filter((image) => image.name || image.data_url)
+              .slice(0, 2)
+          : [];
+
+        const legacyName = asText(item.image_name);
+        const legacyDataUrl = asText(item.image_data_url);
+        const normalizedImages =
+          images.length > 0
+            ? images
+            : legacyName || legacyDataUrl
+              ? [{ name: legacyName, data_url: legacyDataUrl }]
+              : [];
+
         return {
           id: asText(item.id) || makeId("photo"),
           title: asText(item.title),
@@ -123,8 +144,7 @@ export function normalizePhotoAttachmentSheet(value: unknown, projectName = ""):
           related_item: asText(item.related_item),
           file_note: asText(item.file_note),
           note: asText(item.note),
-          image_name: asText(item.image_name),
-          image_data_url: asText(item.image_data_url),
+          images: normalizedImages,
         };
       })
     : [];
@@ -152,7 +172,6 @@ export function countFilledPhotoItems(sheet: PhotoAttachmentSheet) {
       item.related_item ||
       item.file_note ||
       item.note ||
-      item.image_name ||
-      item.image_data_url,
+      item.images.some((image) => image.name || image.data_url),
   ).length;
 }

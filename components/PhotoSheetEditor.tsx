@@ -9,6 +9,8 @@ import { countFilledPhotoItems, createPhotoAttachmentItem } from "@/lib/attachme
 import { convertImageFileToDataUrl } from "@/lib/browser-image";
 import type { Expenditure, PhotoAttachmentSheet } from "@/lib/types";
 
+const IMAGE_SLOT_COUNT = 2;
+
 export default function PhotoSheetEditor({ expenditure }: { expenditure: Expenditure }) {
   const [sheet, setSheet] = useState<PhotoAttachmentSheet>(expenditure.photo_sheet);
   const [message, setMessage] = useState("");
@@ -22,7 +24,7 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
     });
   }
 
-  async function uploadImage(index: number, files: FileList | null) {
+  async function uploadImage(index: number, imageIndex: number, files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
 
@@ -31,10 +33,15 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
       setSheet((current) => {
         const items = [...current.items];
         const currentItem = items[index];
+        const images = [...currentItem.images];
+        images[imageIndex] = {
+          name: file.name,
+          data_url: imageDataUrl,
+        };
+
         items[index] = {
           ...currentItem,
-          image_name: file.name,
-          image_data_url: imageDataUrl,
+          images: images.filter((image) => image?.name || image?.data_url).slice(0, IMAGE_SLOT_COUNT),
           file_note: currentItem.file_note || file.name,
         };
         return { ...current, items };
@@ -45,13 +52,15 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
     }
   }
 
-  function clearImage(index: number) {
+  function clearImage(index: number, imageIndex: number) {
     setSheet((current) => {
       const items = [...current.items];
+      const currentItem = items[index];
+      const images = [...currentItem.images];
+      images.splice(imageIndex, 1);
       items[index] = {
-        ...items[index],
-        image_name: "",
-        image_data_url: "",
+        ...currentItem,
+        images,
       };
       return { ...current, items };
     });
@@ -99,7 +108,7 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
             <div className="mt-2 space-y-1 text-sm text-slate-600">
               <div>연결 결의서: {expenditure.doc_number || `#${expenditure.id}`}</div>
               <div>사업명: {expenditure.project_name || "-"}</div>
-              <div>사진 파일을 직접 올리면 첨부지와 PDF에 실제 이미지가 표시됩니다.</div>
+              <div>각 사진 기록마다 최대 2장까지 첨부할 수 있습니다.</div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -153,7 +162,7 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
           <div>
             <div className="text-lg font-semibold">사진 기록</div>
             <div className="mt-1 text-sm text-slate-500">
-              각 기록마다 사진 한 장을 직접 올리고, 제목과 설명을 함께 저장할 수 있습니다.
+              한 기록마다 사진 1장 또는 2장을 붙일 수 있고, 첨부지/PDF에도 그대로 출력됩니다.
             </div>
           </div>
           <button
@@ -179,51 +188,53 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
                 </button>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="btn btn-secondary cursor-pointer !px-3 !py-2">
-                    <ImagePlus className="h-4 w-4" />
-                    사진 파일 선택
-                    <input
-                      className="hidden"
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        uploadImage(index, event.target.files);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
-                  {item.image_data_url ? (
-                    <button
-                      className="btn btn-danger !px-3 !py-2"
-                      onClick={() => clearImage(index)}
-                    >
-                      <X className="h-4 w-4" />
-                      사진 제거
-                    </button>
-                  ) : null}
-                  <div className="text-xs text-slate-500">
-                    업로드한 사진은 출력용으로 자동 최적화됩니다.
-                  </div>
-                </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {Array.from({ length: IMAGE_SLOT_COUNT }).map((_, imageIndex) => {
+                  const image = item.images[imageIndex];
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  {item.image_data_url ? (
-                    <div className="space-y-3">
-                      <img
-                        src={item.image_data_url}
-                        alt={item.title || `사진 ${index + 1}`}
-                        className="max-h-[420px] w-full rounded-2xl object-contain"
-                      />
-                      <div className="text-xs text-slate-500">{item.image_name || "업로드된 사진"}</div>
+                  return (
+                    <div key={`${item.id}-image-${imageIndex}`} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="btn btn-secondary cursor-pointer !px-3 !py-2">
+                          <ImagePlus className="h-4 w-4" />
+                          사진 {imageIndex + 1} 선택
+                          <input
+                            className="hidden"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              uploadImage(index, imageIndex, event.target.files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        {image ? (
+                          <button
+                            className="btn btn-danger !px-3 !py-2"
+                            onClick={() => clearImage(index, imageIndex)}
+                          >
+                            <X className="h-4 w-4" />
+                            제거
+                          </button>
+                        ) : null}
+                      </div>
+                      {image ? (
+                        <div className="space-y-2">
+                          <img
+                            src={image.data_url}
+                            alt={item.title || `사진 ${index + 1}-${imageIndex + 1}`}
+                            className="max-h-[320px] w-full rounded-2xl object-contain"
+                          />
+                          <div className="text-xs text-slate-500">{image.name || `사진 ${imageIndex + 1}`}</div>
+                        </div>
+                      ) : (
+                        <div className="grid min-h-[220px] place-items-center rounded-2xl border border-dashed border-slate-300 text-sm text-slate-400">
+                          사진 {imageIndex + 1} 업로드 영역
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="grid min-h-[220px] place-items-center rounded-2xl border border-dashed border-slate-300 text-sm text-slate-400">
-                      업로드한 사진이 여기에 표시됩니다.
-                    </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -329,18 +340,29 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
           {sheet.items.map((item, index) => (
             <section key={item.id} className="rounded-2xl border border-slate-200 p-4">
               <div className="mb-3 text-sm font-semibold">사진 {index + 1}</div>
-              <div className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                {item.image_data_url ? (
-                  <img
-                    src={item.image_data_url}
-                    alt={item.title || `사진 ${index + 1}`}
-                    className="max-h-[360px] w-full object-contain"
-                  />
-                ) : (
-                  <div className="grid min-h-[180px] place-items-center border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">
-                    {item.file_note || "사진 파일 또는 출력물을 여기에 배치"}
-                  </div>
-                )}
+              <div className="mb-4 grid gap-4 md:grid-cols-2">
+                {Array.from({ length: IMAGE_SLOT_COUNT }).map((_, imageIndex) => {
+                  const image = item.images[imageIndex];
+
+                  return (
+                    <div
+                      key={`${item.id}-print-image-${imageIndex}`}
+                      className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                    >
+                      {image ? (
+                        <img
+                          src={image.data_url}
+                          alt={item.title || `사진 ${index + 1}-${imageIndex + 1}`}
+                          className="max-h-[320px] w-full object-contain"
+                        />
+                      ) : (
+                        <div className="grid min-h-[220px] place-items-center border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">
+                          사진 {imageIndex + 1} 없음
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <div className="grid gap-2 text-sm">
                 <div>제목: {item.title || "-"}</div>
@@ -348,7 +370,9 @@ export default function PhotoSheetEditor({ expenditure }: { expenditure: Expendi
                 <div>위치: {item.location || "-"}</div>
                 <div>연결 항목: {item.related_item || "-"}</div>
                 <div>설명: {item.description || "-"}</div>
-                <div>파일명: {item.image_name || "-"}</div>
+                <div>
+                  파일명: {item.images.map((image) => image.name).filter(Boolean).join(", ") || "-"}
+                </div>
                 <div>파일/보관 메모: {item.file_note || "-"}</div>
                 <div>비고: {item.note || "-"}</div>
               </div>

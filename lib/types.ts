@@ -56,8 +56,10 @@ export type PhotoAttachmentItem = {
   related_item: string;
   file_note: string;
   note: string;
-  image_name: string;
-  image_data_url: string;
+  images: {
+    name: string;
+    data_url: string;
+  }[];
 };
 
 export type PhotoAttachmentSheet = {
