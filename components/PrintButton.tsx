@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 export default function PrintButton({
-  label = "PDF 저장 / 인쇄",
+  label = "인쇄",
   documentTitle,
 }: {
   label?: string;
