@@ -1,6 +1,6 @@
 "use client";
 
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 import { jsPDF } from "jspdf";
 
 const advancedColorPattern = /(oklch|oklab|lab|lch|color-mix|rgb\(from)/i;
