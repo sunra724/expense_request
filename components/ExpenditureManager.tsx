@@ -63,16 +63,6 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
     : form.vat_excluded
       ? { supplyAmount: totalAmount, vatAmount: 0 }
       : splitVatFromTotal(totalAmount);
-  const requiredChecklist = buildEvidenceChecklist(form.payment_method, {
-    budgetItem: form.budget_item,
-    expenseCategory: form.expense_category,
-    vendorBusinessNumber: form.vendor_business_number,
-    vendorName: form.payee_company,
-    payeeName: form.payee_name,
-  });
-  const checklist = Array.from(
-    new Set([...(form.evidence_checklist.length ? form.evidence_checklist : requiredChecklist), ...requiredChecklist]),
-  );
   return {
     ...form,
     total_amount: totalAmount,
@@ -86,10 +76,10 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
         form.vat_excluded,
       ),
     doc_number: applyDocumentPrefix(form.doc_number, "expenditure", form.budget_scope, form.issue_date),
-    evidence_checklist: checklist,
+    evidence_checklist: form.evidence_checklist,
     evidence_completion: Object.fromEntries(
       Object.entries(form.evidence_completion).filter(([key]) =>
-        checklist.includes(key as ExpenditureInput["evidence_checklist"][number]),
+        form.evidence_checklist.includes(key as ExpenditureInput["evidence_checklist"][number]),
       ),
     ) as ExpenditureInput["evidence_completion"],
   };
@@ -122,22 +112,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       }),
     [form.budget_item, form.expense_category, form.vendor_business_number, form.payee_company, form.payee_name],
   );
-  const displayEvidenceChecklist = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...form.evidence_checklist,
-          ...buildEvidenceChecklist(form.payment_method, {
-            budgetItem: form.budget_item,
-            expenseCategory: form.expense_category,
-            vendorBusinessNumber: form.vendor_business_number,
-            vendorName: form.payee_company,
-            payeeName: form.payee_name,
-          }),
-        ]),
-      ),
-    [form.evidence_checklist, form.payment_method, form.budget_item, form.expense_category, form.vendor_business_number, form.payee_company, form.payee_name],
-  );
+  const displayEvidenceChecklist = useMemo(() => form.evidence_checklist, [form.evidence_checklist]);
   const pendingChecklist = useMemo(
     () => displayEvidenceChecklist.filter((key) => !form.evidence_completion[key]),
     [displayEvidenceChecklist, form.evidence_completion],

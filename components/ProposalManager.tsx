@@ -61,23 +61,13 @@ function normalizeProposalPayload(form: ProposalInput, totalAmount: number): Pro
   const supplyAmount = form.supply_amount || fallbackFromEligible.supplyAmount;
   const vatAmount = form.vat_amount || fallbackFromEligible.vatAmount;
   const eligibleAmount = form.eligible_amount || mergeEligibleAmount(supplyAmount, vatAmount);
-  const requiredChecklist = buildEvidenceChecklist(form.payment_method, {
-    budgetItem: form.budget_item,
-    expenseCategory: form.items.map((item) => item.expense_category).join(" "),
-    vendorBusinessNumber: form.vendor_business_number,
-    vendorName: form.vendor_name,
-  });
-  const checklist = Array.from(
-    new Set([...(form.evidence_checklist.length ? form.evidence_checklist : requiredChecklist), ...requiredChecklist]),
-  );
-
   return {
     ...form,
     total_amount: totalAmount,
     supply_amount: supplyAmount,
     vat_amount: vatAmount,
     eligible_amount: eligibleAmount,
-    evidence_checklist: checklist,
+    evidence_checklist: form.evidence_checklist,
     doc_number: applyDocumentPrefix(form.doc_number, "proposal", form.budget_scope, form.submission_date),
   };
 }
@@ -144,21 +134,7 @@ export default function ProposalManager() {
       }),
     [form.budget_item, form.items, form.vendor_business_number, form.vendor_name],
   );
-  const displayEvidenceChecklist = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...form.evidence_checklist,
-          ...buildEvidenceChecklist(form.payment_method, {
-            budgetItem: form.budget_item,
-            expenseCategory: form.items.map((item) => item.expense_category).join(" "),
-            vendorBusinessNumber: form.vendor_business_number,
-            vendorName: form.vendor_name,
-          }),
-        ]),
-      ),
-    [form.evidence_checklist, form.payment_method, form.budget_item, form.items, form.vendor_business_number, form.vendor_name],
-  );
+  const displayEvidenceChecklist = useMemo(() => form.evidence_checklist, [form.evidence_checklist]);
 
   function updateSupplyAmount(supplyAmount: number) {
     setForm((current) => ({

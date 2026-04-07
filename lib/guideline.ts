@@ -36,7 +36,7 @@ export function paymentMethodLabel(value: string) {
 }
 
 export const evidenceTypeOptions = [
-  { value: "tax_invoice", label: "세금계산서" },
+  { value: "tax_invoice", label: "세금계산서/현금영수증" },
   { value: "card_payment", label: "카드결제" },
   { value: "youth_transfer", label: "청년 개인 계좌이체" },
   { value: "other", label: "기타" },
@@ -63,7 +63,7 @@ export const evidenceChecklistOptions = [
   { key: "vendor_registration", label: "거래처 사업자등록증" },
   { key: "vendor_bankbook", label: "거래처 통장사본" },
   { key: "recipient_id_copy", label: "수령인 신분증 사본" },
-  { key: "tax_invoice", label: "세금계산서" },
+  { key: "tax_invoice", label: "세금계산서 또는 현금영수증" },
   { key: "card_receipt", label: "카드전표" },
   { key: "shopping_capture", label: "구매사이트 화면캡처" },
   { key: "transaction_statement", label: "거래명세서" },
