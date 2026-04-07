@@ -30,6 +30,92 @@ import type { Expenditure, ExpenditureInput, ExpenditureItem, Organization, Proj
 type ContextPayload = { organizations: Organization[]; projects: Project[] };
 const emptyItem = (): ExpenditureItem => ({ description: "", amount: 0, note: "" });
 
+function mapProposalItemsToExpenditureItems(proposal: Proposal): ExpenditureItem[] {
+  if (!proposal.items.length) return [emptyItem()];
+
+  return proposal.items.map((item) => ({
+    description: item.description,
+    amount: item.estimated_amount,
+    note: [item.calculation_basis ? `산출근거: ${item.calculation_basis}` : "", item.note]
+      .filter(Boolean)
+      .join(" / "),
+  }));
+}
+
+function buildChecklistCompletion(
+  checklist: ExpenditureInput["evidence_checklist"],
+  currentCompletion: ExpenditureInput["evidence_completion"] = {},
+) {
+  return Object.fromEntries(
+    Object.entries(currentCompletion).filter(([key]) =>
+      checklist.includes(key as ExpenditureInput["evidence_checklist"][number]),
+    ),
+  ) as ExpenditureInput["evidence_completion"];
+}
+
+function applyProposalToExpenditureForm(
+  proposal: Proposal,
+  current?: ExpenditureInput | null,
+): ExpenditureInput {
+  const items = mapProposalItemsToExpenditureItems(proposal);
+  const checklist = proposal.evidence_checklist.length
+    ? [...proposal.evidence_checklist]
+    : buildEvidenceChecklist(proposal.payment_method, {
+        budgetItem: proposal.budget_item,
+        expenseCategory: proposal.items.map((item) => item.expense_category).join(" "),
+        vendorBusinessNumber: proposal.vendor_business_number,
+        vendorName: proposal.vendor_name,
+      });
+
+  return {
+    ...(current ?? createDefaultExpenditureGuidelineFields()),
+    proposal_id: proposal.id,
+    doc_number:
+      current?.doc_number && current.proposal_id === proposal.id
+        ? current.doc_number
+        : applyDocumentPrefix("", "expenditure", proposal.budget_scope, current?.issue_date || today()),
+    project_name: proposal.project_name,
+    expense_category: proposal.items[0]?.expense_category ?? proposal.budget_item ?? "",
+    issue_date: current?.issue_date || today(),
+    record_date: current?.record_date || today(),
+    total_amount: proposal.total_amount,
+    payee_address: current?.payee_address || "",
+    payee_company: proposal.vendor_name,
+    payee_name:
+      current?.payee_name || (!proposal.vendor_business_number ? proposal.vendor_name : ""),
+    receipt_date: current?.receipt_date || today(),
+    receipt_name: current?.receipt_name || proposal.vendor_name || "",
+    items,
+    evidence_sheet:
+      current?.project_name === proposal.project_name && current.evidence_sheet
+        ? current.evidence_sheet
+        : createEvidenceAttachmentSheet(proposal.project_name),
+    photo_sheet:
+      current?.project_name === proposal.project_name && current.photo_sheet
+        ? current.photo_sheet
+        : createPhotoAttachmentSheet(proposal.project_name),
+    status: current?.status ?? "draft",
+    organization_id: proposal.organization_id,
+    project_id: proposal.project_id,
+    template_code: proposal.template_code,
+    budget_scope: proposal.budget_scope,
+    budget_category: proposal.budget_category,
+    budget_item: proposal.budget_item,
+    payment_method: proposal.payment_method,
+    vendor_business_number: proposal.vendor_business_number,
+    evidence_type: current?.evidence_type ?? "card_payment",
+    supply_amount: proposal.supply_amount || proposal.total_amount,
+    vat_amount: proposal.vat_amount,
+    eligible_amount: proposal.eligible_amount || proposal.total_amount,
+    attendee_count: current?.attendee_count ?? 0,
+    unit_amount: current?.unit_amount ?? 0,
+    evidence_checklist: checklist,
+    evidence_completion: buildChecklistCompletion(checklist, current?.evidence_completion),
+    compliance_flags: current?.compliance_flags ?? [],
+    vat_excluded: current?.vat_excluded ?? false,
+  };
+}
+
 function blankForm(organizations: Organization[], projects: Project[]): ExpenditureInput {
   const project = projects[0] ?? null;
   const organization =
@@ -201,6 +287,16 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     }
   }
 
+  async function refillFromLinkedProposal(proposalId: number, preserveCurrent = true) {
+    const response = await fetch(`/api/proposals/${proposalId}`);
+    const proposal: Proposal = await response.json();
+    if (!proposal?.id) return;
+
+    setForm((current) => applyProposalToExpenditureForm(proposal, preserveCurrent ? current : null));
+    setLinkedProposalName(proposal.project_name);
+    setLinkedProposalDocNumber(proposal.doc_number || "");
+  }
+
   useEffect(() => {
     let active = true;
     Promise.all([fetch("/api/expenditures"), fetch("/api/context"), fetch("/api/proposals")]).then(async ([a, b, c]) => {
@@ -228,56 +324,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       .then((response) => response.json())
       .then((proposal: Proposal) => {
         if (!active || !proposal?.id) return;
-        setForm({
-          proposal_id: proposal.id,
-          doc_number: applyDocumentPrefix("", "expenditure", proposal.budget_scope, today()),
-          project_name: proposal.project_name,
-          expense_category: proposal.items[0]?.expense_category ?? proposal.budget_item ?? "",
-          issue_date: today(),
-          record_date: today(),
-          total_amount: proposal.total_amount,
-          payee_address: "",
-          payee_company: proposal.vendor_name,
-          payee_name: "",
-          receipt_date: today(),
-          receipt_name: "",
-          items: proposal.items.length ? proposal.items.map((item) => ({ description: item.description, amount: item.estimated_amount, note: item.note })) : [emptyItem()],
-          evidence_sheet: createEvidenceAttachmentSheet(proposal.project_name),
-          photo_sheet: createPhotoAttachmentSheet(proposal.project_name),
-          status: "draft",
-          ...createDefaultExpenditureGuidelineFields(),
-          organization_id: proposal.organization_id,
-          project_id: proposal.project_id,
-          template_code: proposal.template_code,
-          budget_scope: proposal.budget_scope,
-          budget_category: proposal.budget_category,
-          budget_item: proposal.budget_item,
-          payment_method: proposal.payment_method,
-          vendor_business_number: proposal.vendor_business_number,
-          supply_amount: proposal.supply_amount || proposal.total_amount,
-          vat_amount: proposal.vat_amount,
-          eligible_amount: proposal.eligible_amount || proposal.total_amount,
-          evidence_checklist: proposal.evidence_checklist.length
-            ? Array.from(
-                new Set([
-                  ...proposal.evidence_checklist,
-                  ...buildEvidenceChecklist(proposal.payment_method, {
-                    budgetItem: proposal.budget_item,
-                    expenseCategory: proposal.items.map((item) => item.expense_category).join(" "),
-                    vendorBusinessNumber: proposal.vendor_business_number,
-                    vendorName: proposal.vendor_name,
-                  }),
-                ]),
-              )
-            : buildEvidenceChecklist(proposal.payment_method, {
-                budgetItem: proposal.budget_item,
-                expenseCategory: proposal.items.map((item) => item.expense_category).join(" "),
-                vendorBusinessNumber: proposal.vendor_business_number,
-                vendorName: proposal.vendor_name,
-              }),
-          evidence_completion: {},
-          vat_excluded: false,
-        });
+        setForm(applyProposalToExpenditureForm(proposal));
         setLinkedProposalName(proposal.project_name);
         setLinkedProposalDocNumber(proposal.doc_number || "");
         setPrefilledFromProposalId(proposal.id);
@@ -395,7 +442,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
 
       <section className="panel overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">선택</th><th className="px-4 py-3">사업</th><th className="px-4 py-3">예산항목</th><th className="px-4 py-3">지급방법</th><th className="px-4 py-3">증빙</th><th className="px-4 py-3 text-right">금액</th><th className="px-4 py-3">상태</th><th className="px-4 py-3">액션</th></tr></thead><tbody>{items.map((item) => { const pending = item.evidence_checklist.filter((key) => !item.evidence_completion[key]).length; const linkedProposalDocNumber = item.proposal_id ? proposalDocNumberMap[item.proposal_id] || `#${item.proposal_id}` : "없음"; return <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><input type="checkbox" checked={selected.includes(item.id)} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} /></td><td className="px-4 py-3"><div className="font-medium">{item.project_name}</div><div className="mt-1 text-xs text-slate-500">품의 {linkedProposalDocNumber}</div></td><td className="px-4 py-3"><div>{item.budget_category || "-"}</div><div className="mt-1 text-xs text-slate-500">{budgetScopeLabel(item.budget_scope)} / {item.budget_item || "-"}</div></td><td className="px-4 py-3">{paymentMethodLabel(item.payment_method)}</td><td className="px-4 py-3"><div className="text-xs text-slate-600">첨부 {countFilledEvidenceItems(item.evidence_sheet)} / 사진 {countFilledPhotoItems(item.photo_sheet)}</div><div className={`mt-1 text-xs ${pending ? "text-amber-600" : "text-emerald-600"}`}>{pending ? `${pending}개 미완료` : "체크 완료"}</div></td><td className="px-4 py-3 text-right">{formatCurrency(item.total_amount)}원</td><td className="px-4 py-3"><span className={`badge ${item.status === "finalized" ? "badge-finalized" : "badge-draft"}`}>{item.status === "finalized" ? "완료" : "작성중"}</span></td><td className="px-4 py-3"><div className="flex gap-2"><Link className="btn btn-secondary !px-3 !py-2" href={`/preview/${item.id}`} target="_blank"><Eye className="h-4 w-4" /></Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/evidence`}>증빙</Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/photos`}>사진</Link><button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>수정</button><button className="btn btn-danger !px-3 !py-2" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4" /></button></div></td></tr>; })}</tbody></table></div></section>
 
-      {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4"><div className="panel max-h-[92vh] w-full max-w-6xl overflow-y-auto px-6 py-6"><div className="mb-6 flex items-center justify-between"><div><div className="text-sm text-slate-500">지출결의서</div><h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>{form.proposal_id ? <p className="mt-2 text-sm text-teal-700">연결 품의서 {linkedProposalDocNumber || `#${form.proposal_id}`}{linkedProposalName ? ` · ${linkedProposalName}` : ""}</p> : null}</div><button className="btn btn-secondary" onClick={() => setOpen(false)}>닫기</button></div>
+      {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4"><div className="panel max-h-[92vh] w-full max-w-6xl overflow-y-auto px-6 py-6"><div className="mb-6 flex items-center justify-between"><div><div className="text-sm text-slate-500">지출결의서</div><h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>{form.proposal_id ? <p className="mt-2 text-sm text-teal-700">연결 품의서 {linkedProposalDocNumber || `#${form.proposal_id}`}{linkedProposalName ? ` · ${linkedProposalName}` : ""}</p> : null}</div><div className="flex items-center gap-2">{form.proposal_id ? <button className="btn btn-secondary" onClick={() => refillFromLinkedProposal(form.proposal_id!)}>품의 내용 다시 불러오기</button> : null}<button className="btn btn-secondary" onClick={() => setOpen(false)}>닫기</button></div></div>
 
         <div className="grid gap-4 md:grid-cols-4">
           <label className="block text-sm">지원기관<select className="select mt-2" value={form.organization_id ?? ""} onChange={(event) => updateOrganization(Number(event.target.value))}><option value="">지원기관 선택</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></label>
