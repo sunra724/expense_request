@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { budgetScopeLabel, evidenceChecklistLabel, paymentMethodLabel } from "@/lib/guideline";
 import { formatCurrency } from "@/lib/format";
 import { numberToKorean } from "@/lib/numberToKorean";
@@ -7,7 +8,33 @@ const fundLabels = {
   grant: "보조금",
   self: "자부담",
   both: "혼합",
-};
+} as const;
+
+function ApprovalBox({
+  role,
+  name,
+  stampSrc,
+}: {
+  role: string;
+  name: string;
+  stampSrc: string;
+}) {
+  return (
+    <div className="approval-cell">
+      <div className="approval-role">{role}</div>
+      <div className="approval-body">
+        <div className="approval-name">{name}</div>
+        <Image
+          src={stampSrc}
+          alt={`${role} 도장`}
+          width={96}
+          height={96}
+          className="approval-stamp"
+        />
+      </div>
+    </div>
+  );
+}
 
 export default function ProposalPreview({
   proposal,
@@ -16,18 +43,24 @@ export default function ProposalPreview({
   proposal: Proposal;
   settings: StampSettings;
 }) {
+  const organizationName = settings.org_name || "협동조합 소이랩";
+  const staffName = settings.staff_name || "이형구";
+  const chairpersonName = settings.chairperson_name || "강아름";
+  const staffStamp = settings.staff_stamp || "/stamps/lee-hyunggu.png";
+  const chairpersonStamp = settings.chairperson_stamp || "/stamps/kang-areum.png";
+
   return (
     <div className="print-sheet">
       <div className="mb-8 text-center">
-        <div className="mb-2 text-3xl font-bold tracking-[0.28em]">지 출 품 의 서</div>
+        <div className="mb-2 text-3xl font-bold tracking-[0.28em]">지출품의서</div>
         <div className="text-sm text-slate-500">문서번호 {proposal.doc_number || "-"}</div>
       </div>
 
-      <div className="mb-6 grid grid-cols-[1fr_360px] gap-6">
+      <div className="mb-6 grid grid-cols-[1fr_320px] gap-6">
         <section className="rounded-2xl border border-slate-200 p-4">
           <div className="mb-3 text-sm font-semibold">기본 정보</div>
           <div className="space-y-2 text-sm">
-            <div>기관명: {proposal.org_name || settings.org_name}</div>
+            <div>지원기관: {proposal.org_name || "-"}</div>
             <div>사업명: {proposal.project_name || "-"}</div>
             <div>사업기간: {proposal.project_period || "-"}</div>
             <div>작성일: {proposal.submission_date || "-"}</div>
@@ -38,20 +71,14 @@ export default function ProposalPreview({
             </div>
             <div>지급방법: {paymentMethodLabel(proposal.payment_method)}</div>
             <div>
-              예정금액: {formatCurrency(proposal.total_amount)}원 ({numberToKorean(proposal.total_amount)})
+              예정금액: {formatCurrency(proposal.total_amount)}원 ({numberToKorean(proposal.total_amount)}원)
             </div>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200">
-          <div className="grid grid-cols-3 text-center text-xs font-semibold">
-            <div className="border-b border-r border-slate-200 p-3">{settings.staff_name}</div>
-            <div className="border-b border-r border-slate-200 p-3">{settings.manager_name}</div>
-            <div className="border-b border-slate-200 p-3">{settings.chairperson_name}</div>
-            <div className="border-r border-slate-200 p-8 text-slate-400">(인)</div>
-            <div className="border-r border-slate-200 p-8 text-slate-400">(인)</div>
-            <div className="p-8 text-slate-400">(인)</div>
-          </div>
+        <section className="approval-grid">
+          <ApprovalBox role="담당자" name={staffName} stampSrc={staffStamp} />
+          <ApprovalBox role="이사장" name={chairpersonName} stampSrc={chairpersonStamp} />
         </section>
       </div>
 
@@ -73,14 +100,20 @@ export default function ProposalPreview({
                 <td className="border border-slate-200 px-3 py-2 text-center">{index + 1}</td>
                 <td className="border border-slate-200 px-3 py-2">{item.expense_category}</td>
                 <td className="border border-slate-200 px-3 py-2">{item.description}</td>
-                <td className="border border-slate-200 px-3 py-2 text-right">{formatCurrency(item.estimated_amount)}</td>
+                <td className="border border-slate-200 px-3 py-2 text-right">
+                  {formatCurrency(item.estimated_amount)}원
+                </td>
                 <td className="border border-slate-200 px-3 py-2">{item.calculation_basis}</td>
                 <td className="border border-slate-200 px-3 py-2">{item.note}</td>
               </tr>
             ))}
             <tr>
-              <td colSpan={3} className="border border-slate-200 px-3 py-2 text-right font-semibold">합계</td>
-              <td className="border border-slate-200 px-3 py-2 text-right font-semibold">{formatCurrency(proposal.total_amount)}</td>
+              <td colSpan={3} className="border border-slate-200 px-3 py-2 text-right font-semibold">
+                합계
+              </td>
+              <td className="border border-slate-200 px-3 py-2 text-right font-semibold">
+                {formatCurrency(proposal.total_amount)}원
+              </td>
               <td colSpan={2} className="border border-slate-200 px-3 py-2" />
             </tr>
           </tbody>
@@ -106,11 +139,20 @@ export default function ProposalPreview({
       </section>
 
       <section className="mb-8 rounded-2xl border border-slate-200 p-4 text-sm">
-        <div className="mb-2 font-semibold">관련 계획서 및 집행사유</div>
+        <div className="mb-2 font-semibold">관련 계획 및 집행사유</div>
         <div>{proposal.related_plan || "-"}</div>
       </section>
 
-      <div className="mt-20 text-right text-base font-semibold">{proposal.org_name || settings.org_name} (인)</div>
+      <div className="print-footer-sign">
+        <span>{organizationName}(인)</span>
+        <Image
+          src="/stamps/soilab-seal.png"
+          alt="협동조합 소이랩 직인"
+          width={96}
+          height={96}
+          className="print-org-seal"
+        />
+      </div>
     </div>
   );
 }

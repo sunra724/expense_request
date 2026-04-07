@@ -40,7 +40,7 @@ let organizations: Organization[] = [
   {
     id: 2,
     slug: "soilab",
-    name: "협동조합 soilab",
+    name: "협동조합 소이랩",
     business_account_note: "운영기관 내부 회계 참고용",
     direct_cost_account_note: "직접비 계좌 별도 관리",
     indirect_cost_account_note: "간접비 계좌 별도 관리",
@@ -68,13 +68,13 @@ let projects: Project[] = [
 
 let settings: StampSettings = {
   id: 1,
-  staff_name: "담당자",
+  staff_name: "이형구",
   manager_name: "실장",
-  chairperson_name: "이사장",
-  staff_stamp: "/stamps/staff.png",
+  chairperson_name: "강아름",
+  staff_stamp: "/stamps/lee-hyunggu.png",
   manager_stamp: "/stamps/manager.png",
-  chairperson_stamp: "/stamps/chairperson.png",
-  org_name: "협동조합 soilab",
+  chairperson_stamp: "/stamps/kang-areum.png",
+  org_name: "협동조합 소이랩",
   updated_at: now(),
 };
 
@@ -87,7 +87,7 @@ let proposals: Proposal[] = [
     project_period: "2026-01-01 ~ 2026-12-31",
     total_amount: 950000,
     related_plan: "사업 운영 계획서 1부",
-    org_name: "협동조합 soilab",
+    org_name: "협동조합 소이랩",
     submission_date: today(),
     items: [
       {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Eye, Plus, Printer, Trash2 } from "lucide-react";
+import CurrencyInput from "@/components/CurrencyInput";
 import EvidenceChecklistSelector from "@/components/EvidenceChecklistSelector";
 import {
   countFilledEvidenceItems,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/attachment-sheets";
 import { createDefaultExpenditureGuidelineFields } from "@/lib/document-defaults";
 import { applyDocumentPrefix } from "@/lib/document-number";
-import { formatCurrency, today } from "@/lib/format";
+import { formatCurrency, mergeEligibleAmount, splitVatFromTotal, today } from "@/lib/format";
 import {
   buildEvidenceChecklist,
   budgetScopeLabel,
@@ -55,6 +56,13 @@ function blankForm(organizations: Organization[], projects: Project[]): Expendit
 }
 
 function normalizePayload(form: ExpenditureInput, totalAmount: number): ExpenditureInput {
+  const fallbackFromEligible = form.eligible_amount
+    ? form.vat_excluded
+      ? { supplyAmount: form.eligible_amount, vatAmount: 0 }
+      : splitVatFromTotal(form.eligible_amount)
+    : form.vat_excluded
+      ? { supplyAmount: totalAmount, vatAmount: 0 }
+      : splitVatFromTotal(totalAmount);
   const requiredChecklist = buildEvidenceChecklist(form.payment_method, {
     budgetItem: form.budget_item,
     expenseCategory: form.expense_category,
@@ -68,8 +76,15 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
   return {
     ...form,
     total_amount: totalAmount,
-    supply_amount: form.supply_amount || Math.max(totalAmount - form.vat_amount, 0),
-    eligible_amount: form.eligible_amount || Math.max(totalAmount - (form.vat_excluded ? form.vat_amount : 0), 0),
+    supply_amount: form.supply_amount || fallbackFromEligible.supplyAmount,
+    vat_amount: form.vat_amount || fallbackFromEligible.vatAmount,
+    eligible_amount:
+      form.eligible_amount ||
+      mergeEligibleAmount(
+        form.supply_amount || fallbackFromEligible.supplyAmount,
+        form.vat_amount || fallbackFromEligible.vatAmount,
+        form.vat_excluded,
+      ),
     doc_number: applyDocumentPrefix(form.doc_number, "expenditure", form.budget_scope, form.issue_date),
     evidence_checklist: checklist,
     evidence_completion: Object.fromEntries(
@@ -127,6 +142,43 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     () => displayEvidenceChecklist.filter((key) => !form.evidence_completion[key]),
     [displayEvidenceChecklist, form.evidence_completion],
   );
+
+  function updateSupplyAmount(supplyAmount: number) {
+    setForm((current) => ({
+      ...current,
+      supply_amount: supplyAmount,
+      eligible_amount: mergeEligibleAmount(supplyAmount, current.vat_amount, current.vat_excluded),
+    }));
+  }
+
+  function updateVatAmount(vatAmount: number) {
+    setForm((current) => ({
+      ...current,
+      vat_amount: vatAmount,
+      eligible_amount: mergeEligibleAmount(current.supply_amount, vatAmount, current.vat_excluded),
+    }));
+  }
+
+  function updateEligibleAmount(eligibleAmount: number) {
+    setForm((current) => {
+      if (current.vat_excluded) {
+        return {
+          ...current,
+          eligible_amount: eligibleAmount,
+          supply_amount: eligibleAmount,
+          vat_amount: 0,
+        };
+      }
+
+      const { supplyAmount, vatAmount } = splitVatFromTotal(eligibleAmount);
+      return {
+        ...current,
+        eligible_amount: eligibleAmount,
+        supply_amount: supplyAmount,
+        vat_amount: vatAmount,
+      };
+    });
+  }
   const warnings = useMemo(() => {
     const next: string[] = [];
     if ((form.expense_category.includes("회의") || form.budget_item.includes("회의")) && form.attendee_count > 0 && form.unit_amount > 15000) next.push("회의비 단가가 1인 15,000원을 초과합니다.");
@@ -388,15 +440,15 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
           <label className="block text-sm">영수증명<input className="field mt-2" value={form.receipt_name} onChange={(event) => setForm({ ...form, receipt_name: event.target.value })} /></label>
           <label className="block text-sm">영수일자<input className="field mt-2" type="date" value={form.receipt_date} onChange={(event) => setForm({ ...form, receipt_date: event.target.value })} /></label>
           <label className="block text-sm md:col-span-4">주소<input className="field mt-2" value={form.payee_address} onChange={(event) => setForm({ ...form, payee_address: event.target.value })} /></label>
-          <label className="block text-sm">공급가액<input className="field mt-2" type="number" value={form.supply_amount} onChange={(event) => setForm({ ...form, supply_amount: Number(event.target.value) })} /></label>
-          <label className="block text-sm">부가세<input className="field mt-2" type="number" value={form.vat_amount} onChange={(event) => setForm({ ...form, vat_amount: Number(event.target.value) })} /></label>
-          <label className="block text-sm">집행인정금액<input className="field mt-2" type="number" value={form.eligible_amount} onChange={(event) => setForm({ ...form, eligible_amount: Number(event.target.value) })} /></label>
-          <label className="flex items-center gap-2 rounded-3xl border border-slate-200 px-4 py-3 text-sm"><input type="checkbox" checked={form.vat_excluded} onChange={(event) => setForm({ ...form, vat_excluded: event.target.checked })} />부가세 제외 처리</label>
+          <label className="block text-sm">공급가액<CurrencyInput className="field mt-2" value={form.supply_amount} onChange={updateSupplyAmount} /></label>
+          <label className="block text-sm">부가세<CurrencyInput className="field mt-2" value={form.vat_amount} onChange={updateVatAmount} /></label>
+          <label className="block text-sm">집행인정금액<CurrencyInput className="field mt-2" value={form.eligible_amount} onChange={updateEligibleAmount} /></label>
+          <label className="flex items-center gap-2 rounded-3xl border border-slate-200 px-4 py-3 text-sm"><input type="checkbox" checked={form.vat_excluded} onChange={(event) => setForm((current) => ({ ...current, vat_excluded: event.target.checked, supply_amount: event.target.checked ? current.eligible_amount : current.supply_amount, vat_amount: event.target.checked ? 0 : current.vat_amount, eligible_amount: event.target.checked ? current.eligible_amount : mergeEligibleAmount(current.supply_amount, current.vat_amount, false) }))} />부가세 제외 처리</label>
           <label className="block text-sm">참석인원<input className="field mt-2" type="number" value={form.attendee_count} onChange={(event) => setForm({ ...form, attendee_count: Number(event.target.value) })} /></label>
-          <label className="block text-sm">1인단가<input className="field mt-2" type="number" value={form.unit_amount} onChange={(event) => setForm({ ...form, unit_amount: Number(event.target.value) })} /></label>
+          <label className="block text-sm">1인단가<CurrencyInput className="field mt-2" value={form.unit_amount} onChange={(value) => setForm({ ...form, unit_amount: value })} /></label>
         </div>
 
-        <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-200"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-3">적요</th><th className="px-3 py-3">금액</th><th className="px-3 py-3">비고</th><th className="px-3 py-3">삭제</th></tr></thead><tbody>{form.items.map((item, index) => <tr key={index} className="border-t border-slate-100"><td className="px-2 py-2"><input className="field" value={item.description} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], description: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><input className="field" type="number" value={item.amount} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], amount: Number(event.target.value) }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><input className="field" value={item.note} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], note: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2 text-center"><button className="btn btn-danger !px-3 !py-2" onClick={() => setForm({ ...form, items: form.items.length === 1 ? [emptyItem()] : form.items.filter((_, i) => i !== index) })}>삭제</button></td></tr>)}</tbody></table></div>
+        <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-200"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-3">적요</th><th className="px-3 py-3">금액</th><th className="px-3 py-3">비고</th><th className="px-3 py-3">삭제</th></tr></thead><tbody>{form.items.map((item, index) => <tr key={index} className="border-t border-slate-100"><td className="px-2 py-2"><input className="field" value={item.description} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], description: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><CurrencyInput className="field" value={item.amount} onChange={(value) => { const next = [...form.items]; next[index] = { ...next[index], amount: value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><input className="field" value={item.note} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], note: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2 text-center"><button className="btn btn-danger !px-3 !py-2" onClick={() => setForm({ ...form, items: form.items.length === 1 ? [emptyItem()] : form.items.filter((_, i) => i !== index) })}>삭제</button></td></tr>)}</tbody></table></div>
         <div className="mt-3 flex items-center justify-between"><button className="btn btn-secondary" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}>행 추가</button><div className="text-sm font-semibold text-slate-700">합계 {formatCurrency(totalAmount)}원</div></div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">

@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRightLeft, Eye, Plus, Printer, Trash2 } from "lucide-react";
+import CurrencyInput from "@/components/CurrencyInput";
 import EvidenceChecklistSelector from "@/components/EvidenceChecklistSelector";
 import { createDefaultProposalGuidelineFields } from "@/lib/document-defaults";
 import { applyDocumentPrefix } from "@/lib/document-number";
-import { formatCurrency, today } from "@/lib/format";
+import { formatCurrency, mergeEligibleAmount, splitVatFromTotal, today } from "@/lib/format";
 import {
   buildEvidenceChecklist,
   budgetScopeLabel,
@@ -47,7 +48,7 @@ function blankProposal(organizations: Organization[], projects: Project[]): Prop
     project_period: buildProjectPeriod(project),
     total_amount: 0,
     related_plan: "",
-    org_name: organization?.name ?? "협동조합 soilab",
+    org_name: organization?.name ?? "협동조합 소이랩",
     submission_date: today(),
     items: [emptyItem()],
     status: "draft",
@@ -56,9 +57,10 @@ function blankProposal(organizations: Organization[], projects: Project[]): Prop
 }
 
 function normalizeProposalPayload(form: ProposalInput, totalAmount: number): ProposalInput {
-  const supplyAmount = form.supply_amount || Math.max(totalAmount - form.vat_amount, 0);
-  const eligibleAmount =
-    form.eligible_amount || Math.max(totalAmount - (form.requires_foundation_approval ? 0 : form.vat_amount), 0);
+  const fallbackFromEligible = form.eligible_amount ? splitVatFromTotal(form.eligible_amount) : splitVatFromTotal(totalAmount);
+  const supplyAmount = form.supply_amount || fallbackFromEligible.supplyAmount;
+  const vatAmount = form.vat_amount || fallbackFromEligible.vatAmount;
+  const eligibleAmount = form.eligible_amount || mergeEligibleAmount(supplyAmount, vatAmount);
   const requiredChecklist = buildEvidenceChecklist(form.payment_method, {
     budgetItem: form.budget_item,
     expenseCategory: form.items.map((item) => item.expense_category).join(" "),
@@ -73,6 +75,7 @@ function normalizeProposalPayload(form: ProposalInput, totalAmount: number): Pro
     ...form,
     total_amount: totalAmount,
     supply_amount: supplyAmount,
+    vat_amount: vatAmount,
     eligible_amount: eligibleAmount,
     evidence_checklist: checklist,
     doc_number: applyDocumentPrefix(form.doc_number, "proposal", form.budget_scope, form.submission_date),
@@ -156,6 +159,32 @@ export default function ProposalManager() {
       ),
     [form.evidence_checklist, form.payment_method, form.budget_item, form.items, form.vendor_business_number, form.vendor_name],
   );
+
+  function updateSupplyAmount(supplyAmount: number) {
+    setForm((current) => ({
+      ...current,
+      supply_amount: supplyAmount,
+      eligible_amount: mergeEligibleAmount(supplyAmount, current.vat_amount),
+    }));
+  }
+
+  function updateVatAmount(vatAmount: number) {
+    setForm((current) => ({
+      ...current,
+      vat_amount: vatAmount,
+      eligible_amount: mergeEligibleAmount(current.supply_amount, vatAmount),
+    }));
+  }
+
+  function updateEligibleAmount(eligibleAmount: number) {
+    const { supplyAmount, vatAmount } = splitVatFromTotal(eligibleAmount);
+    setForm((current) => ({
+      ...current,
+      eligible_amount: eligibleAmount,
+      supply_amount: supplyAmount,
+      vat_amount: vatAmount,
+    }));
+  }
 
   const warnings = useMemo(() => {
     const next: string[] = [];
@@ -588,29 +617,26 @@ export default function ProposalManager() {
               </label>
               <label className="block text-sm">
                 공급가액
-                <input
+                <CurrencyInput
                   className="field mt-2"
-                  type="number"
                   value={form.supply_amount}
-                  onChange={(event) => setForm({ ...form, supply_amount: Number(event.target.value) })}
+                  onChange={updateSupplyAmount}
                 />
               </label>
               <label className="block text-sm">
                 부가세
-                <input
+                <CurrencyInput
                   className="field mt-2"
-                  type="number"
                   value={form.vat_amount}
-                  onChange={(event) => setForm({ ...form, vat_amount: Number(event.target.value) })}
+                  onChange={updateVatAmount}
                 />
               </label>
               <label className="block text-sm">
                 집행인정금액
-                <input
+                <CurrencyInput
                   className="field mt-2"
-                  type="number"
                   value={form.eligible_amount}
-                  onChange={(event) => setForm({ ...form, eligible_amount: Number(event.target.value) })}
+                  onChange={updateEligibleAmount}
                 />
               </label>
               <label className="block text-sm md:col-span-2">
@@ -661,13 +687,12 @@ export default function ProposalManager() {
                         />
                       </td>
                       <td className="px-2 py-2">
-                        <input
+                        <CurrencyInput
                           className="field"
-                          type="number"
                           value={item.estimated_amount}
-                          onChange={(event) => {
+                          onChange={(value) => {
                             const next = [...form.items];
-                            next[index] = { ...next[index], estimated_amount: Number(event.target.value) };
+                            next[index] = { ...next[index], estimated_amount: value };
                             setForm({ ...form, items: next });
                           }}
                         />

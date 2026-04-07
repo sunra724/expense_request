@@ -6,7 +6,7 @@ create table if not exists proposals (
   project_period text default '',
   total_amount integer default 0,
   related_plan text default '',
-  org_name text default '협동조합 soilab',
+  org_name text default '협동조합 소이랩',
   submission_date date,
   items jsonb not null default '[]'::jsonb,
   status text not null default 'draft',
@@ -47,13 +47,13 @@ add column if not exists photo_sheet jsonb not null default '{"title":"증빙사
 
 create table if not exists stamp_settings (
   id integer primary key default 1,
-  staff_name text default '담당자',
+  staff_name text default '이형구',
   manager_name text default '실장',
-  chairperson_name text default '이사장',
-  staff_stamp text default '/stamps/staff.png',
+  chairperson_name text default '강아름',
+  staff_stamp text default '/stamps/lee-hyunggu.png',
   manager_stamp text default '/stamps/manager.png',
-  chairperson_stamp text default '/stamps/chairperson.png',
-  org_name text default '협동조합 soilab',
+  chairperson_stamp text default '/stamps/kang-areum.png',
+  org_name text default '협동조합 소이랩',
   updated_at timestamptz not null default now()
 );
 
