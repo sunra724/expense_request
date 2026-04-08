@@ -31,8 +31,8 @@ let organizations: Organization[] = [
     slug: "youth-foundation",
     name: "청년재단",
     business_account_note: "지원기관 기준 사업비 관리",
-    direct_cost_account_note: "직접비 기준 확인",
-    indirect_cost_account_note: "간접비 기준 확인",
+    direct_cost_account_note: "직접비 계정 확인",
+    indirect_cost_account_note: "간접비 계정 확인",
     default_template_code: "default",
     created_at: now(),
     updated_at: now(),
@@ -69,7 +69,7 @@ let projects: Project[] = [
 let settings: StampSettings = {
   id: 1,
   staff_name: "이형구",
-  manager_name: "실장",
+  manager_name: "부장",
   chairperson_name: "강아름",
   staff_stamp: "/stamps/lee-hyunggu.png",
   manager_stamp: "/stamps/manager.png",
@@ -81,7 +81,7 @@ let settings: StampSettings = {
 let proposals: Proposal[] = [
   {
     id: 1,
-    doc_number: "P-2026-001",
+    doc_number: "다다름-직접-품의-26-001",
     fund_type: "grant",
     project_name: "2026 청년다다름사업",
     project_period: "2026-01-01 ~ 2026-12-31",
@@ -99,7 +99,7 @@ let proposals: Proposal[] = [
       },
       {
         expense_category: "참여자 식비",
-        description: "참여자 식사",
+        description: "참여자 행사 식사",
         estimated_amount: 700000,
         calculation_basis: "14,000원 x 50명",
         note: "",
@@ -123,7 +123,7 @@ let expenditures: Expenditure[] = [
   {
     id: 1,
     proposal_id: 1,
-    doc_number: "E-2026-001",
+    doc_number: "다다름-직접-결의-26-001",
     project_name: "2026 청년다다름사업",
     expense_category: "운영비",
     issue_date: today(),
@@ -139,7 +139,7 @@ let expenditures: Expenditure[] = [
       { description: "회의 식비", amount: 300000, note: "" },
     ],
     evidence_sheet: {
-      title: "2026 청년다다름사업 증빙서류 첨부철",
+      title: "2026 청년다다름사업 증빙서류 첨부지",
       submission_note: "카드전표와 간이영수증을 함께 보관합니다.",
       items: [
         {
@@ -150,13 +150,16 @@ let expenditures: Expenditure[] = [
           issued_on: today(),
           amount: 300000,
           related_item: "회의 식비",
-          file_note: "원본 첨부",
+          file_note: "원본 별도 보관",
           note: "",
+          attachment_name: "",
+          attachment_data_url: "",
+          attachment_mime_type: "",
         },
       ],
     },
     photo_sheet: {
-      title: "2026 청년다다름사업 증빙사진 첨부철",
+      title: "2026 청년다다름사업 증빙사진 첨부지",
       submission_note: "행사 진행 사진을 순서대로 첨부합니다.",
       items: [
         {

@@ -39,6 +39,9 @@ export type EvidenceAttachmentItem = {
   related_item: string;
   file_note: string;
   note: string;
+  attachment_name: string;
+  attachment_data_url: string;
+  attachment_mime_type: string;
 };
 
 export type EvidenceAttachmentSheet = {

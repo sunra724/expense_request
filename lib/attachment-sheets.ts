@@ -47,6 +47,9 @@ export function createEvidenceAttachmentItem(): EvidenceAttachmentItem {
     related_item: "",
     file_note: "",
     note: "",
+    attachment_name: "",
+    attachment_data_url: "",
+    attachment_mime_type: "",
   };
 }
 
@@ -96,6 +99,9 @@ export function normalizeEvidenceAttachmentSheet(value: unknown, projectName = "
           related_item: asText(item.related_item),
           file_note: asText(item.file_note),
           note: asText(item.note),
+          attachment_name: asText(item.attachment_name),
+          attachment_data_url: asText(item.attachment_data_url),
+          attachment_mime_type: asText(item.attachment_mime_type),
         };
       })
     : [];
@@ -159,7 +165,15 @@ export function normalizePhotoAttachmentSheet(value: unknown, projectName = ""):
 
 export function countFilledEvidenceItems(sheet: EvidenceAttachmentSheet) {
   return sheet.items.filter(
-    (item) => item.title || item.issuer || item.amount || item.related_item || item.file_note || item.note,
+    (item) =>
+      item.title ||
+      item.issuer ||
+      item.amount ||
+      item.related_item ||
+      item.file_note ||
+      item.note ||
+      item.attachment_name ||
+      item.attachment_data_url,
   ).length;
 }
 

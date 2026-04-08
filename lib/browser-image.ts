@@ -14,7 +14,7 @@ function loadImage(source: string) {
   });
 }
 
-function readFileAsDataUrl(file: File) {
+export function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
