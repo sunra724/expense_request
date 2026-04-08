@@ -208,18 +208,33 @@ textarea {
 
 .print-footer-sign {
   margin-top: 64px;
+  position: relative;
+  width: 320px;
+  min-height: 104px;
+  margin-left: auto;
+  padding-right: 98px;
   display: flex;
-  align-items: end;
-  justify-content: end;
-  gap: 12px;
+  align-items: center;
+  justify-content: flex-start;
   font-size: 16px;
   font-weight: 600;
 }
 
+.print-footer-sign > span {
+  position: relative;
+  z-index: 1;
+  line-height: 1.2;
+}
+
 .print-org-seal {
+  position: absolute;
+  right: 6px;
+  top: 50%;
   width: 2.45cm;
   height: 2.45cm;
   object-fit: contain;
+  transform: translateY(-56%) rotate(-4deg);
+  opacity: 0.92;
 }
 
 @media print {
