@@ -61,6 +61,31 @@ function blankProposal(organizations: Organization[], projects: Project[]): Prop
   };
 }
 
+function cloneProposalForReuse(
+  proposal: Proposal,
+  organizations: Organization[],
+  projects: Project[],
+): ProposalInput {
+  const project = projects.find((item) => item.id === proposal.project_id) ?? null;
+  const organization =
+    organizations.find((item) => item.id === proposal.organization_id) ?? organizations[0] ?? null;
+  const nextDate = today();
+
+  return {
+    ...proposal,
+    doc_number: applyDocumentPrefix("", "proposal", proposal.budget_scope, nextDate),
+    org_name: organization?.name ?? proposal.org_name,
+    project_name: project?.name ?? proposal.project_name,
+    project_period: project ? buildProjectPeriod(project) : proposal.project_period,
+    submission_date: nextDate,
+    planned_payment_date: nextDate,
+    status: "draft",
+    items: proposal.items.length ? proposal.items.map((item) => ({ ...item })) : [emptyItem()],
+    evidence_checklist: [...proposal.evidence_checklist],
+    compliance_flags: [...proposal.compliance_flags],
+  };
+}
+
 function normalizeProposalPayload(form: ProposalInput, totalAmount: number): ProposalInput {
   const amountMode = getAmountPresentationMode({
     budgetCategory: form.budget_category,
@@ -301,6 +326,19 @@ export default function ProposalManager() {
     setSelected((current) => current.filter((item) => item !== id));
   }
 
+  function duplicateProposal(source: Proposal) {
+    setEditingId(null);
+    setForm(cloneProposalForReuse(source, organizations, projects));
+    setOpen(true);
+  }
+
+  function duplicateSelected() {
+    if (selected.length !== 1) return;
+    const source = items.find((item) => item.id === selected[0]);
+    if (!source) return;
+    duplicateProposal(source);
+  }
+
   function updateOrganization(nextOrganizationId: number) {
     const organization = organizations.find((item) => item.id === nextOrganizationId) ?? null;
     const nextProject =
@@ -362,6 +400,12 @@ export default function ProposalManager() {
             <Plus className="h-4 w-4" />
             새 품의서
           </button>
+          {selected.length === 1 ? (
+            <button className="btn btn-secondary" onClick={duplicateSelected}>
+              <Plus className="h-4 w-4" />
+              선택 1건 복제
+            </button>
+          ) : null}
           {selected.length > 0 ? (
             <Link className="btn btn-secondary" href={batchHref} target="_blank">
               <Printer className="h-4 w-4" />
@@ -448,6 +492,9 @@ export default function ProposalManager() {
                       </Link>
                       <button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>
                         수정
+                      </button>
+                      <button className="btn btn-secondary !px-3 !py-2" onClick={() => duplicateProposal(item)}>
+                        복제
                       </button>
                       <button className="btn btn-danger !px-3 !py-2" onClick={() => remove(item.id)}>
                         <Trash2 className="h-4 w-4" />
