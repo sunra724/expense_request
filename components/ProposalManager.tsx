@@ -5,6 +5,11 @@ import Link from "next/link";
 import { ArrowRightLeft, Eye, Plus, Printer, Trash2 } from "lucide-react";
 import CurrencyInput from "@/components/CurrencyInput";
 import EvidenceChecklistSelector from "@/components/EvidenceChecklistSelector";
+import {
+  getAmountFieldLabels,
+  getAmountPresentationMode,
+  mergeWithholdingAmount,
+} from "@/lib/amount-presentation";
 import { createDefaultProposalGuidelineFields } from "@/lib/document-defaults";
 import { applyDocumentPrefix, hasDocumentNumberSuffix } from "@/lib/document-number";
 import { formatCurrency, mergeEligibleAmount, splitVatFromTotal, today } from "@/lib/format";
@@ -57,6 +62,28 @@ function blankProposal(organizations: Organization[], projects: Project[]): Prop
 }
 
 function normalizeProposalPayload(form: ProposalInput, totalAmount: number): ProposalInput {
+  const amountMode = getAmountPresentationMode({
+    budgetCategory: form.budget_category,
+    budgetItem: form.budget_item,
+    expenseCategory: form.items.map((item) => item.expense_category).join(" "),
+  });
+
+  if (amountMode === "withholding") {
+    const netAmount = form.supply_amount || Math.max(0, form.eligible_amount - form.vat_amount);
+    const withholdingAmount = form.vat_amount;
+    const grossAmount = form.eligible_amount || mergeWithholdingAmount(netAmount, withholdingAmount);
+
+    return {
+      ...form,
+      total_amount: totalAmount,
+      supply_amount: netAmount,
+      vat_amount: withholdingAmount,
+      eligible_amount: grossAmount,
+      evidence_checklist: form.evidence_checklist,
+      doc_number: applyDocumentPrefix(form.doc_number, "proposal", form.budget_scope, form.submission_date),
+    };
+  }
+
   const fallbackFromEligible = form.eligible_amount ? splitVatFromTotal(form.eligible_amount) : splitVatFromTotal(totalAmount);
   const supplyAmount = form.supply_amount || fallbackFromEligible.supplyAmount;
   const vatAmount = form.vat_amount || fallbackFromEligible.vatAmount;
@@ -135,31 +162,79 @@ export default function ProposalManager() {
     [form.budget_item, form.items, form.vendor_business_number, form.vendor_name],
   );
   const displayEvidenceChecklist = useMemo(() => form.evidence_checklist, [form.evidence_checklist]);
+  const amountMode = useMemo(
+    () =>
+      getAmountPresentationMode({
+        budgetCategory: form.budget_category,
+        budgetItem: form.budget_item,
+        expenseCategory: form.items.map((item) => item.expense_category).join(" "),
+      }),
+    [form.budget_category, form.budget_item, form.items],
+  );
+  const amountLabels = useMemo(() => getAmountFieldLabels(amountMode), [amountMode]);
 
   function updateSupplyAmount(supplyAmount: number) {
-    setForm((current) => ({
-      ...current,
-      supply_amount: supplyAmount,
-      eligible_amount: mergeEligibleAmount(supplyAmount, current.vat_amount),
-    }));
+    setForm((current) => {
+      const currentMode = getAmountPresentationMode({
+        budgetCategory: current.budget_category,
+        budgetItem: current.budget_item,
+        expenseCategory: current.items.map((item) => item.expense_category).join(" "),
+      });
+
+      return {
+        ...current,
+        supply_amount: supplyAmount,
+        eligible_amount:
+          currentMode === "withholding"
+            ? mergeWithholdingAmount(supplyAmount, current.vat_amount)
+            : mergeEligibleAmount(supplyAmount, current.vat_amount),
+      };
+    });
   }
 
   function updateVatAmount(vatAmount: number) {
-    setForm((current) => ({
-      ...current,
-      vat_amount: vatAmount,
-      eligible_amount: mergeEligibleAmount(current.supply_amount, vatAmount),
-    }));
+    setForm((current) => {
+      const currentMode = getAmountPresentationMode({
+        budgetCategory: current.budget_category,
+        budgetItem: current.budget_item,
+        expenseCategory: current.items.map((item) => item.expense_category).join(" "),
+      });
+
+      return {
+        ...current,
+        vat_amount: vatAmount,
+        eligible_amount:
+          currentMode === "withholding"
+            ? mergeWithholdingAmount(current.supply_amount, vatAmount)
+            : mergeEligibleAmount(current.supply_amount, vatAmount),
+      };
+    });
   }
 
   function updateEligibleAmount(eligibleAmount: number) {
-    const { supplyAmount, vatAmount } = splitVatFromTotal(eligibleAmount);
-    setForm((current) => ({
-      ...current,
-      eligible_amount: eligibleAmount,
-      supply_amount: supplyAmount,
-      vat_amount: vatAmount,
-    }));
+    setForm((current) => {
+      const currentMode = getAmountPresentationMode({
+        budgetCategory: current.budget_category,
+        budgetItem: current.budget_item,
+        expenseCategory: current.items.map((item) => item.expense_category).join(" "),
+      });
+
+      if (currentMode === "withholding") {
+        return {
+          ...current,
+          eligible_amount: eligibleAmount,
+          supply_amount: Math.max(0, eligibleAmount - current.vat_amount),
+        };
+      }
+
+      const { supplyAmount, vatAmount } = splitVatFromTotal(eligibleAmount);
+      return {
+        ...current,
+        eligible_amount: eligibleAmount,
+        supply_amount: supplyAmount,
+        vat_amount: vatAmount,
+      };
+    });
   }
 
   const warnings = useMemo(() => {
@@ -169,7 +244,7 @@ export default function ProposalManager() {
       next.push("재단 승인 대상 전용 또는 예외 집행으로 표시되어 있습니다.");
     }
 
-    if (form.vat_amount > 0 && form.eligible_amount >= totalAmount) {
+    if (amountMode === "vat" && form.vat_amount > 0 && form.eligible_amount >= totalAmount) {
       next.push("부가세가 있는 건은 집행인정금액을 다시 확인하는 것이 좋습니다.");
     }
 
@@ -186,7 +261,7 @@ export default function ProposalManager() {
     }
 
     return next;
-  }, [form, totalAmount, requiresIdentityCopy]);
+  }, [amountMode, form, totalAmount, requiresIdentityCopy]);
 
   async function openForEdit(id: number) {
     const response = await fetch(`/api/proposals/${id}`);
@@ -579,7 +654,7 @@ export default function ProposalManager() {
                 />
               </label>
               <label className="block text-sm">
-                사업자등록번호
+                {amountLabels.vendorId}
                 <input
                   className="field mt-2"
                   value={form.vendor_business_number}
@@ -597,7 +672,7 @@ export default function ProposalManager() {
                 재단 승인 필요
               </label>
               <label className="block text-sm">
-                공급가액
+                {amountLabels.firstAmount}
                 <CurrencyInput
                   className="field mt-2"
                   value={form.supply_amount}
@@ -605,7 +680,7 @@ export default function ProposalManager() {
                 />
               </label>
               <label className="block text-sm">
-                부가세
+                {amountLabels.secondAmount}
                 <CurrencyInput
                   className="field mt-2"
                   value={form.vat_amount}
@@ -613,7 +688,7 @@ export default function ProposalManager() {
                 />
               </label>
               <label className="block text-sm">
-                집행인정금액
+                {amountLabels.thirdAmount}
                 <CurrencyInput
                   className="field mt-2"
                   value={form.eligible_amount}
@@ -628,6 +703,14 @@ export default function ProposalManager() {
                   onChange={(event) => setForm({ ...form, transfer_note: event.target.value })}
                 />
               </label>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              {amountMode === "withholding" ? (
+                <div>인건비·강사비·기타소득은 `실지급액 + 원천징수액 = 지급총액(세전)` 기준으로 입력합니다.</div>
+              ) : (
+                <div>물품구매·용역비는 `공급가액 + 세액 = 집행인정금액` 기준으로 입력합니다.</div>
+              )}
             </div>
 
             <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-200">

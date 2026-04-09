@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Eye, Plus, Printer, Trash2 } from "lucide-react";
+import {
+  getAmountFieldLabels,
+  getAmountPresentationMode,
+  mergeWithholdingAmount,
+} from "@/lib/amount-presentation";
 import CurrencyInput from "@/components/CurrencyInput";
 import EvidenceChecklistSelector from "@/components/EvidenceChecklistSelector";
 import {
@@ -189,6 +194,33 @@ function blankForm(organizations: Organization[], projects: Project[]): Expendit
 }
 
 function normalizePayload(form: ExpenditureInput, totalAmount: number): ExpenditureInput {
+  const amountMode = getAmountPresentationMode({
+    budgetCategory: form.budget_category,
+    budgetItem: form.budget_item,
+    expenseCategory: form.expense_category,
+  });
+
+  if (amountMode === "withholding") {
+    const netAmount = form.supply_amount || Math.max(0, form.eligible_amount - form.vat_amount);
+    const withholdingAmount = form.vat_amount;
+    const grossAmount = form.eligible_amount || mergeWithholdingAmount(netAmount, withholdingAmount);
+
+    return {
+      ...form,
+      total_amount: totalAmount,
+      supply_amount: netAmount,
+      vat_amount: withholdingAmount,
+      eligible_amount: grossAmount,
+      doc_number: applyDocumentPrefix(form.doc_number, "expenditure", form.budget_scope, form.issue_date),
+      evidence_checklist: form.evidence_checklist,
+      evidence_completion: Object.fromEntries(
+        Object.entries(form.evidence_completion).filter(([key]) =>
+          form.evidence_checklist.includes(key as ExpenditureInput["evidence_checklist"][number]),
+        ),
+      ) as ExpenditureInput["evidence_completion"],
+    };
+  }
+
   const fallbackFromEligible = form.eligible_amount
     ? form.vat_excluded
       ? { supplyAmount: form.eligible_amount, vatAmount: 0 }
@@ -250,25 +282,71 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     () => displayEvidenceChecklist.filter((key) => !form.evidence_completion[key]),
     [displayEvidenceChecklist, form.evidence_completion],
   );
+  const amountMode = useMemo(
+    () =>
+      getAmountPresentationMode({
+        budgetCategory: form.budget_category,
+        budgetItem: form.budget_item,
+        expenseCategory: form.expense_category,
+      }),
+    [form.budget_category, form.budget_item, form.expense_category],
+  );
+  const amountLabels = useMemo(() => getAmountFieldLabels(amountMode), [amountMode]);
 
   function updateSupplyAmount(supplyAmount: number) {
-    setForm((current) => ({
-      ...current,
-      supply_amount: supplyAmount,
-      eligible_amount: mergeEligibleAmount(supplyAmount, current.vat_amount, current.vat_excluded),
-    }));
+    setForm((current) => {
+      const currentMode = getAmountPresentationMode({
+        budgetCategory: current.budget_category,
+        budgetItem: current.budget_item,
+        expenseCategory: current.expense_category,
+      });
+
+      return {
+        ...current,
+        supply_amount: supplyAmount,
+        eligible_amount:
+          currentMode === "withholding"
+            ? mergeWithholdingAmount(supplyAmount, current.vat_amount)
+            : mergeEligibleAmount(supplyAmount, current.vat_amount, current.vat_excluded),
+      };
+    });
   }
 
   function updateVatAmount(vatAmount: number) {
-    setForm((current) => ({
-      ...current,
-      vat_amount: vatAmount,
-      eligible_amount: mergeEligibleAmount(current.supply_amount, vatAmount, current.vat_excluded),
-    }));
+    setForm((current) => {
+      const currentMode = getAmountPresentationMode({
+        budgetCategory: current.budget_category,
+        budgetItem: current.budget_item,
+        expenseCategory: current.expense_category,
+      });
+
+      return {
+        ...current,
+        vat_amount: vatAmount,
+        eligible_amount:
+          currentMode === "withholding"
+            ? mergeWithholdingAmount(current.supply_amount, vatAmount)
+            : mergeEligibleAmount(current.supply_amount, vatAmount, current.vat_excluded),
+      };
+    });
   }
 
   function updateEligibleAmount(eligibleAmount: number) {
     setForm((current) => {
+      const currentMode = getAmountPresentationMode({
+        budgetCategory: current.budget_category,
+        budgetItem: current.budget_item,
+        expenseCategory: current.expense_category,
+      });
+
+      if (currentMode === "withholding") {
+        return {
+          ...current,
+          eligible_amount: eligibleAmount,
+          supply_amount: Math.max(0, eligibleAmount - current.vat_amount),
+        };
+      }
+
       if (current.vat_excluded) {
         return {
           ...current,
@@ -290,11 +368,11 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
   const warnings = useMemo(() => {
     const next: string[] = [];
     if ((form.expense_category.includes("회의") || form.budget_item.includes("회의")) && form.attendee_count > 0 && form.unit_amount > 15000) next.push("회의비 단가가 1인 15,000원을 초과합니다.");
-    if (form.vat_amount > 0 && !form.vat_excluded) next.push("환급 대상 부가세 제외 여부를 확인하세요.");
+    if (amountMode === "vat" && form.vat_amount > 0 && !form.vat_excluded) next.push("환급 대상 부가세 제외 여부를 확인하세요.");
     if (!form.budget_category || !form.budget_item) next.push("비목과 세목이 비어 있습니다.");
     if (form.payment_method === "account_transfer" && requiresIdentityCopy) next.push("개인 강사·전문가 계좌이체 건은 신분증 사본과 통장사본을 함께 첨부하세요.");
     return next;
-  }, [form, requiresIdentityCopy]);
+  }, [amountMode, form, requiresIdentityCopy]);
 
   async function fetchList() {
     const [expenditureResponse, proposalResponse] = await Promise.all([
@@ -527,15 +605,15 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
           <label className="block text-sm">지급방법<select className="select mt-2" value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value as ExpenditureInput["payment_method"], evidence_checklist: buildEvidenceChecklist(event.target.value as ExpenditureInput["payment_method"], { budgetItem: form.budget_item, expenseCategory: form.expense_category, vendorBusinessNumber: form.vendor_business_number, vendorName: form.payee_company, payeeName: form.payee_name }), evidence_completion: {} })}>{paymentMethodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className="block text-sm">증빙유형<select className="select mt-2" value={form.evidence_type} onChange={(event) => setForm({ ...form, evidence_type: event.target.value as ExpenditureInput["evidence_type"] })}>{evidenceTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className="block text-sm">거래처<input className="field mt-2" value={form.payee_company} onChange={(event) => setForm({ ...form, payee_company: event.target.value })} /></label>
-          <label className="block text-sm">사업자등록번호<input className="field mt-2" value={form.vendor_business_number} onChange={(event) => setForm({ ...form, vendor_business_number: event.target.value })} /></label>
+          <label className="block text-sm">{amountLabels.vendorId}<input className="field mt-2" value={form.vendor_business_number} onChange={(event) => setForm({ ...form, vendor_business_number: event.target.value })} /></label>
           <label className="block text-sm">수령인명<input className="field mt-2" value={form.payee_name} onChange={(event) => setForm({ ...form, payee_name: event.target.value })} /></label>
           <label className="block text-sm">영수증명<input className="field mt-2" value={form.receipt_name} onChange={(event) => setForm({ ...form, receipt_name: event.target.value })} /></label>
           <label className="block text-sm">영수일자<input className="field mt-2" type="date" value={form.receipt_date} onChange={(event) => setForm({ ...form, receipt_date: event.target.value })} /></label>
           <label className="block text-sm md:col-span-4">주소<input className="field mt-2" value={form.payee_address} onChange={(event) => setForm({ ...form, payee_address: event.target.value })} /></label>
-          <label className="block text-sm">공급가액<CurrencyInput className="field mt-2" value={form.supply_amount} onChange={updateSupplyAmount} /></label>
-          <label className="block text-sm">부가세<CurrencyInput className="field mt-2" value={form.vat_amount} onChange={updateVatAmount} /></label>
-          <label className="block text-sm">집행인정금액<CurrencyInput className="field mt-2" value={form.eligible_amount} onChange={updateEligibleAmount} /></label>
-          <label className="flex items-center gap-2 rounded-3xl border border-slate-200 px-4 py-3 text-sm"><input type="checkbox" checked={form.vat_excluded} onChange={(event) => setForm((current) => ({ ...current, vat_excluded: event.target.checked, supply_amount: event.target.checked ? current.eligible_amount : current.supply_amount, vat_amount: event.target.checked ? 0 : current.vat_amount, eligible_amount: event.target.checked ? current.eligible_amount : mergeEligibleAmount(current.supply_amount, current.vat_amount, false) }))} />부가세 제외 처리</label>
+          <label className="block text-sm">{amountLabels.firstAmount}<CurrencyInput className="field mt-2" value={form.supply_amount} onChange={updateSupplyAmount} /></label>
+          <label className="block text-sm">{amountLabels.secondAmount}<CurrencyInput className="field mt-2" value={form.vat_amount} onChange={updateVatAmount} /></label>
+          <label className="block text-sm">{amountLabels.thirdAmount}<CurrencyInput className="field mt-2" value={form.eligible_amount} onChange={updateEligibleAmount} /></label>
+          {amountMode === "withholding" ? <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">인건비·강사비·기타소득은 실지급액 + 원천징수액 = 지급총액(세전) 기준으로 입력합니다.</div> : <label className="flex items-center gap-2 rounded-3xl border border-slate-200 px-4 py-3 text-sm"><input type="checkbox" checked={form.vat_excluded} onChange={(event) => setForm((current) => ({ ...current, vat_excluded: event.target.checked, supply_amount: event.target.checked ? current.eligible_amount : current.supply_amount, vat_amount: event.target.checked ? 0 : current.vat_amount, eligible_amount: event.target.checked ? current.eligible_amount : mergeEligibleAmount(current.supply_amount, current.vat_amount, false) }))} />{amountLabels.exclusionLabel}</label>}
           <label className="block text-sm">참석인원<input className="field mt-2" type="number" value={form.attendee_count} onChange={(event) => setForm({ ...form, attendee_count: Number(event.target.value) })} /></label>
           <label className="block text-sm">1인단가<CurrencyInput className="field mt-2" value={form.unit_amount} onChange={(value) => setForm({ ...form, unit_amount: value })} /></label>
         </div>

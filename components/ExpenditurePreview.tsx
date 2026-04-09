@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { getAmountFieldLabels, getAmountPresentationMode } from "@/lib/amount-presentation";
 import { countFilledEvidenceItems, countFilledPhotoItems } from "@/lib/attachment-sheets";
 import { formatCurrency } from "@/lib/format";
 import {
@@ -23,13 +24,7 @@ function ApprovalBox({
       <div className="approval-role">{role}</div>
       <div className="approval-body">
         <div className="approval-name">{name}</div>
-        <Image
-          src={stampSrc}
-          alt={`${role} 도장`}
-          width={96}
-          height={96}
-          className="approval-stamp"
-        />
+        <Image src={stampSrc} alt={`${role} 도장`} width={96} height={96} className="approval-stamp" />
       </div>
     </div>
   );
@@ -52,6 +47,12 @@ export default function ExpenditurePreview({
   const chairpersonName = settings.chairperson_name || "강아름";
   const staffStamp = settings.staff_stamp || "/stamps/lee-hyunggu.png";
   const chairpersonStamp = settings.chairperson_stamp || "/stamps/kang-areum.png";
+  const amountMode = getAmountPresentationMode({
+    budgetCategory: expenditure.budget_category,
+    budgetItem: expenditure.budget_item,
+    expenseCategory: expenditure.expense_category,
+  });
+  const amountLabels = getAmountFieldLabels(amountMode);
 
   return (
     <div className="print-sheet">
@@ -89,11 +90,15 @@ export default function ExpenditurePreview({
           <div>세목: {expenditure.budget_item || "-"}</div>
           <div>거래처: {expenditure.payee_company || "-"}</div>
           <div>수령인: {expenditure.payee_name || "-"}</div>
-          <div>사업자등록번호: {expenditure.vendor_business_number || "-"}</div>
-          <div>공급가액: {formatCurrency(expenditure.supply_amount)}원</div>
-          <div>부가세: {formatCurrency(expenditure.vat_amount)}원</div>
-          <div>집행인정금액: {formatCurrency(expenditure.eligible_amount)}원</div>
-          <div>부가세 제외 처리: {expenditure.vat_excluded ? "예" : "아니오"}</div>
+          <div>{amountLabels.vendorId}: {expenditure.vendor_business_number || "-"}</div>
+          <div>{amountLabels.firstAmount}: {formatCurrency(expenditure.supply_amount)}원</div>
+          <div>{amountLabels.secondAmount}: {formatCurrency(expenditure.vat_amount)}원</div>
+          <div>{amountLabels.thirdAmount}: {formatCurrency(expenditure.eligible_amount)}원</div>
+          {amountMode === "vat" ? (
+            <div>{amountLabels.exclusionLabel}: {expenditure.vat_excluded ? "예" : "아니오"}</div>
+          ) : (
+            <div>입력방식: 원천징수형</div>
+          )}
         </div>
       </section>
 

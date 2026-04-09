@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { getAmountFieldLabels, getAmountPresentationMode } from "@/lib/amount-presentation";
 import { budgetScopeLabel, evidenceChecklistLabel, paymentMethodLabel } from "@/lib/guideline";
 import { formatCurrency } from "@/lib/format";
 import { numberToKorean } from "@/lib/numberToKorean";
@@ -24,13 +25,7 @@ function ApprovalBox({
       <div className="approval-role">{role}</div>
       <div className="approval-body">
         <div className="approval-name">{name}</div>
-        <Image
-          src={stampSrc}
-          alt={`${role} 도장`}
-          width={96}
-          height={96}
-          className="approval-stamp"
-        />
+        <Image src={stampSrc} alt={`${role} 도장`} width={96} height={96} className="approval-stamp" />
       </div>
     </div>
   );
@@ -48,6 +43,12 @@ export default function ProposalPreview({
   const chairpersonName = settings.chairperson_name || "강아름";
   const staffStamp = settings.staff_stamp || "/stamps/lee-hyunggu.png";
   const chairpersonStamp = settings.chairperson_stamp || "/stamps/kang-areum.png";
+  const amountMode = getAmountPresentationMode({
+    budgetCategory: proposal.budget_category,
+    budgetItem: proposal.budget_item,
+    expenseCategory: proposal.items.map((item) => item.expense_category).join(" "),
+  });
+  const amountLabels = getAmountFieldLabels(amountMode);
 
   return (
     <div className="print-sheet">
@@ -124,10 +125,10 @@ export default function ProposalPreview({
         <div className="mb-2 font-semibold">집행 기준</div>
         <div className="space-y-2">
           <div>거래처: {proposal.vendor_name || "-"}</div>
-          <div>사업자등록번호: {proposal.vendor_business_number || "-"}</div>
-          <div>공급가액: {formatCurrency(proposal.supply_amount)}원</div>
-          <div>부가세: {formatCurrency(proposal.vat_amount)}원</div>
-          <div>집행인정금액: {formatCurrency(proposal.eligible_amount)}원</div>
+          <div>{amountLabels.vendorId}: {proposal.vendor_business_number || "-"}</div>
+          <div>{amountLabels.firstAmount}: {formatCurrency(proposal.supply_amount)}원</div>
+          <div>{amountLabels.secondAmount}: {formatCurrency(proposal.vat_amount)}원</div>
+          <div>{amountLabels.thirdAmount}: {formatCurrency(proposal.eligible_amount)}원</div>
           <div>재단 승인 필요: {proposal.requires_foundation_approval ? "예" : "아니오"}</div>
           <div>
             증빙 체크리스트:{" "}
