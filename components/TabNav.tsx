@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, FileText, Landmark, LayoutDashboard, Settings } from "lucide-react";
+import { ClipboardList, FileText, Landmark, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { useState } from "react";
 
 const tabs = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
@@ -13,6 +14,17 @@ const tabs = [
 
 export default function TabNav() {
   const pathname = usePathname();
+  const [signingOut, setSigningOut] = useState(false);
+
+  if (pathname === "/login" || pathname.startsWith("/auth/")) {
+    return null;
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.assign("/login");
+  }
 
   return (
     <header
@@ -53,10 +65,21 @@ export default function TabNav() {
           })}
         </nav>
 
-        <Link href="/settings" className="flex items-center gap-2 text-sm text-white/75 hover:text-white">
-          <Settings className="h-4 w-4" />
-          설정
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/settings" className="flex items-center gap-2 text-sm text-white/75 hover:text-white">
+            <Settings className="h-4 w-4" />
+            설정
+          </Link>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="flex items-center gap-2 text-sm text-white/75 hover:text-white disabled:opacity-50"
+          >
+            <LogOut className="h-4 w-4" />
+            로그아웃
+          </button>
+        </div>
       </div>
     </header>
   );

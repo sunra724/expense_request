@@ -40,6 +40,7 @@ NEXT_PUBLIC_APP_URL=https://dadareum.soilab-youth.kr
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+ADMIN_EMAILS=
 
 GOOGLE_CALENDAR_ICAL_URL=
 GOOGLE_CALENDAR_NAME=2026년 청년 다다름 사업
@@ -72,9 +73,39 @@ NEXT_PUBLIC_APP_URL=https://dadareum.soilab-youth.kr
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+ADMIN_EMAILS=
 GOOGLE_CALENDAR_ICAL_URL=
 GOOGLE_CALENDAR_NAME=2026년 청년 다다름 사업
 ```
+
+## 로그인/관리자 권한
+
+운영 화면은 Supabase Auth 이메일/비밀번호 로그인을 사용합니다. `ADMIN_EMAILS`에 등록된 이메일만 관리자 권한으로 접속할 수 있습니다.
+
+예시:
+
+```bash
+ADMIN_EMAILS=소이랩공용이메일,관리자이메일
+```
+
+운영 적용 순서:
+
+1. Supabase Dashboard > Authentication > Providers에서 Email 로그인을 활성화합니다.
+2. Supabase Dashboard > Authentication > URL Configuration에서 Site URL을 `https://dadareum.soilab-youth.kr`로 설정합니다.
+3. Redirect URLs에 아래 주소를 추가합니다.
+
+```text
+https://dadareum.soilab-youth.kr/auth/callback
+https://dadareum.soilab-youth.kr/auth/callback?next=/auth/update-password
+http://localhost:3000/auth/callback
+http://localhost:3000/auth/callback?next=/auth/update-password
+```
+
+4. Authentication > Users에서 소이랩 공용 이메일과 관리자 이메일 사용자를 초대하거나 생성합니다.
+5. Railway Variables에 `ADMIN_EMAILS`를 같은 이메일 목록으로 설정합니다.
+6. 사용자는 `/login`에서 로그인하거나 비밀번호 설정/재설정 메일을 받아 본인 비밀번호를 설정합니다.
+
+Supabase 기본 메일 발송은 제한이 있으므로 운영 중 비밀번호 재설정 메일을 안정적으로 쓰려면 Supabase Auth의 Custom SMTP 설정을 권장합니다.
 
 ## 운영 도메인
 
