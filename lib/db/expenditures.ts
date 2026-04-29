@@ -11,6 +11,7 @@ import {
   upsertExpenditureGuidelineMeta,
 } from "@/lib/db/guideline-metadata";
 import { embedExpenditureInlineMeta, extractExpenditureInlineMeta } from "@/lib/db/inline-guideline-meta";
+import { resolveExpenditureAmount, withResolvedExpenditureAmount } from "@/lib/expenditure-amount";
 import {
   batchExpenditureMemory,
   createExpenditureMemory,
@@ -48,6 +49,13 @@ function normalizeExpenditure(row: Record<string, unknown>, meta?: unknown | nul
   const projectName = String(row.project_name ?? "");
   const inline = extractExpenditureInlineMeta(row.items);
   const guideline = normalizeExpenditureGuidelineMeta(meta ?? inline.meta, baseGuidelineFallback(row));
+  const totalAmount = resolveExpenditureAmount({
+    total_amount: Number(row.total_amount ?? 0),
+    eligible_amount: guideline.eligible_amount,
+    supply_amount: guideline.supply_amount,
+    vat_amount: guideline.vat_amount,
+    items: inline.items,
+  });
 
   return {
     id: Number(row.id),
@@ -57,7 +65,7 @@ function normalizeExpenditure(row: Record<string, unknown>, meta?: unknown | nul
     expense_category: String(row.expense_category ?? ""),
     issue_date: String(row.issue_date ?? ""),
     record_date: String(row.record_date ?? ""),
-    total_amount: Number(row.total_amount ?? 0),
+    total_amount: totalAmount,
     payee_address: String(row.payee_address ?? ""),
     payee_company: String(row.payee_company ?? ""),
     payee_name: String(row.payee_name ?? ""),
@@ -74,24 +82,26 @@ function normalizeExpenditure(row: Record<string, unknown>, meta?: unknown | nul
 }
 
 function toExpenditureRow(input: ExpenditureInput) {
+  const normalized = withResolvedExpenditureAmount(input);
+
   return {
-    proposal_id: input.proposal_id,
-    doc_number: input.doc_number,
-    project_name: input.project_name,
-    expense_category: input.expense_category,
-    issue_date: input.issue_date || null,
-    record_date: input.record_date || null,
-    total_amount: input.total_amount,
-    payee_address: input.payee_address,
-    payee_company: input.payee_company,
-    payee_name: input.payee_name,
-    payment_method: paymentMethodLabel(input.payment_method),
-    receipt_date: input.receipt_date || null,
-    receipt_name: input.receipt_name,
-    items: embedExpenditureInlineMeta(input.items, input),
-    evidence_sheet: input.evidence_sheet,
-    photo_sheet: input.photo_sheet,
-    status: input.status,
+    proposal_id: normalized.proposal_id,
+    doc_number: normalized.doc_number,
+    project_name: normalized.project_name,
+    expense_category: normalized.expense_category,
+    issue_date: normalized.issue_date || null,
+    record_date: normalized.record_date || null,
+    total_amount: normalized.total_amount,
+    payee_address: normalized.payee_address,
+    payee_company: normalized.payee_company,
+    payee_name: normalized.payee_name,
+    payment_method: paymentMethodLabel(normalized.payment_method),
+    receipt_date: normalized.receipt_date || null,
+    receipt_name: normalized.receipt_name,
+    items: embedExpenditureInlineMeta(normalized.items, normalized),
+    evidence_sheet: normalized.evidence_sheet,
+    photo_sheet: normalized.photo_sheet,
+    status: normalized.status,
   };
 }
 
@@ -119,31 +129,33 @@ export async function getExpenditure(id: number) {
 }
 
 export async function createExpenditure(input: ExpenditureInput) {
-  if (!hasSupabaseEnv()) return createExpenditureMemory(input);
+  if (!hasSupabaseEnv()) return createExpenditureMemory(withResolvedExpenditureAmount(input));
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("expenditures").insert(toExpenditureRow(input)).select("*").single();
+  const normalizedInput = withResolvedExpenditureAmount(input);
+  const { data, error } = await supabase.from("expenditures").insert(toExpenditureRow(normalizedInput)).select("*").single();
   if (error) throw error;
 
-  const created = normalizeExpenditure(data, input);
-  await upsertExpenditureGuidelineMeta(created.id, input);
+  const created = normalizeExpenditure(data, normalizedInput);
+  await upsertExpenditureGuidelineMeta(created.id, normalizedInput);
   return created;
 }
 
 export async function updateExpenditure(id: number, input: ExpenditureInput) {
-  if (!hasSupabaseEnv()) return updateExpenditureMemory(id, input);
+  if (!hasSupabaseEnv()) return updateExpenditureMemory(id, withResolvedExpenditureAmount(input));
 
   const supabase = getSupabaseAdmin();
+  const normalizedInput = withResolvedExpenditureAmount(input);
   const { data, error } = await supabase
     .from("expenditures")
-    .update({ ...toExpenditureRow(input), updated_at: new Date().toISOString() })
+    .update({ ...toExpenditureRow(normalizedInput), updated_at: new Date().toISOString() })
     .eq("id", id)
     .select("*")
     .single();
   if (error) return null;
 
-  const updated = normalizeExpenditure(data, input);
-  await upsertExpenditureGuidelineMeta(id, input);
+  const updated = normalizeExpenditure(data, normalizedInput);
+  await upsertExpenditureGuidelineMeta(id, normalizedInput);
   return updated;
 }
 

@@ -17,6 +17,7 @@ import {
 } from "@/lib/db/memory-store";
 import { defaultEvidenceChecklist } from "@/lib/guideline";
 import { getSupabaseAdmin, hasSupabaseEnv } from "@/lib/supabase";
+import { resolveProposalAmount, withResolvedProposalAmount } from "@/lib/proposal-amount";
 import type { Proposal, ProposalInput } from "@/lib/types";
 
 function inferBudgetScope(row: Record<string, unknown>): Proposal["budget_scope"] {
@@ -44,6 +45,13 @@ function baseGuidelineFallback(row: Record<string, unknown>) {
 function normalizeProposal(row: Record<string, unknown>, meta?: unknown | null): Proposal {
   const inline = extractProposalInlineMeta(row.items);
   const guideline = normalizeProposalGuidelineMeta(meta ?? inline.meta, baseGuidelineFallback(row));
+  const totalAmount = resolveProposalAmount({
+    total_amount: Number(row.total_amount ?? 0),
+    eligible_amount: guideline.eligible_amount,
+    supply_amount: guideline.supply_amount,
+    vat_amount: guideline.vat_amount,
+    items: inline.items,
+  });
 
   return {
     id: Number(row.id),
@@ -51,7 +59,7 @@ function normalizeProposal(row: Record<string, unknown>, meta?: unknown | null):
     fund_type: (row.fund_type as Proposal["fund_type"]) ?? "grant",
     project_name: String(row.project_name ?? ""),
     project_period: String(row.project_period ?? ""),
-    total_amount: Number(row.total_amount ?? 0),
+    total_amount: totalAmount,
     related_plan: String(row.related_plan ?? ""),
     org_name: String(row.org_name ?? ""),
     submission_date: String(row.submission_date ?? ""),
@@ -64,17 +72,19 @@ function normalizeProposal(row: Record<string, unknown>, meta?: unknown | null):
 }
 
 function toProposalRow(input: ProposalInput) {
+  const normalized = withResolvedProposalAmount(input);
+
   return {
-    doc_number: input.doc_number,
-    fund_type: input.fund_type,
-    project_name: input.project_name,
-    project_period: input.project_period,
-    total_amount: input.total_amount,
-    related_plan: input.related_plan,
-    org_name: input.org_name,
-    submission_date: input.submission_date || null,
-    items: embedProposalInlineMeta(input.items, input),
-    status: input.status,
+    doc_number: normalized.doc_number,
+    fund_type: normalized.fund_type,
+    project_name: normalized.project_name,
+    project_period: normalized.project_period,
+    total_amount: normalized.total_amount,
+    related_plan: normalized.related_plan,
+    org_name: normalized.org_name,
+    submission_date: normalized.submission_date || null,
+    items: embedProposalInlineMeta(normalized.items, normalized),
+    status: normalized.status,
   };
 }
 
@@ -102,31 +112,33 @@ export async function getProposal(id: number) {
 }
 
 export async function createProposal(input: ProposalInput) {
-  if (!hasSupabaseEnv()) return createProposalMemory(input);
+  if (!hasSupabaseEnv()) return createProposalMemory(withResolvedProposalAmount(input));
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("proposals").insert(toProposalRow(input)).select("*").single();
+  const normalizedInput = withResolvedProposalAmount(input);
+  const { data, error } = await supabase.from("proposals").insert(toProposalRow(normalizedInput)).select("*").single();
   if (error) throw error;
 
-  const created = normalizeProposal(data, input);
-  await upsertProposalGuidelineMeta(created.id, input);
+  const created = normalizeProposal(data, normalizedInput);
+  await upsertProposalGuidelineMeta(created.id, normalizedInput);
   return created;
 }
 
 export async function updateProposal(id: number, input: ProposalInput) {
-  if (!hasSupabaseEnv()) return updateProposalMemory(id, input);
+  if (!hasSupabaseEnv()) return updateProposalMemory(id, withResolvedProposalAmount(input));
 
   const supabase = getSupabaseAdmin();
+  const normalizedInput = withResolvedProposalAmount(input);
   const { data, error } = await supabase
     .from("proposals")
-    .update({ ...toProposalRow(input), updated_at: new Date().toISOString() })
+    .update({ ...toProposalRow(normalizedInput), updated_at: new Date().toISOString() })
     .eq("id", id)
     .select("*")
     .single();
   if (error) return null;
 
-  const updated = normalizeProposal(data, input);
-  await upsertProposalGuidelineMeta(id, input);
+  const updated = normalizeProposal(data, normalizedInput);
+  await upsertProposalGuidelineMeta(id, normalizedInput);
   return updated;
 }
 

@@ -18,6 +18,7 @@ import {
 } from "@/lib/attachment-sheets";
 import { createDefaultExpenditureGuidelineFields } from "@/lib/document-defaults";
 import { applyDocumentPrefix, hasDocumentNumberSuffix } from "@/lib/document-number";
+import { resolveExpenditureAmount, withResolvedExpenditureAmount } from "@/lib/expenditure-amount";
 import { formatCurrency, mergeEligibleAmount, splitVatFromTotal, today } from "@/lib/format";
 import {
   buildEvidenceChecklist,
@@ -30,7 +31,17 @@ import {
   paymentMethodOptions,
   requiresRecipientIdentityCopy,
 } from "@/lib/guideline";
-import type { Expenditure, ExpenditureInput, ExpenditureItem, Organization, Project, Proposal } from "@/lib/types";
+import { resolveProposalAmount, resolveProposalItemAmount } from "@/lib/proposal-amount";
+import type {
+  Expenditure,
+  ExpenditureInput,
+  ExpenditureItem,
+  ExpenditureYouthAllocationInput,
+  Organization,
+  Project,
+  ProjectYouth,
+  Proposal,
+} from "@/lib/types";
 
 type ContextPayload = { organizations: Organization[]; projects: Project[] };
 const emptyItem = (): ExpenditureItem => ({ description: "", amount: 0, note: "" });
@@ -40,7 +51,7 @@ function mapProposalItemsToExpenditureItems(proposal: Proposal): ExpenditureItem
 
   return proposal.items.map((item) => ({
     description: item.description,
-    amount: item.estimated_amount,
+    amount: resolveProposalItemAmount(item, proposal),
     note: [item.calculation_basis ? `산출근거: ${item.calculation_basis}` : "", item.note]
       .filter(Boolean)
       .join(" / "),
@@ -62,6 +73,7 @@ function applyProposalToExpenditureForm(
   proposal: Proposal,
   current?: ExpenditureInput | null,
 ): ExpenditureInput {
+  const proposalAmount = resolveProposalAmount(proposal);
   const items = mapProposalItemsToExpenditureItems(proposal);
   const checklist = proposal.evidence_checklist.length
     ? [...proposal.evidence_checklist]
@@ -83,7 +95,7 @@ function applyProposalToExpenditureForm(
     expense_category: proposal.items[0]?.expense_category ?? proposal.budget_item ?? "",
     issue_date: current?.issue_date || today(),
     record_date: current?.record_date || today(),
-    total_amount: proposal.total_amount,
+    total_amount: proposalAmount,
     payee_address: current?.payee_address || "",
     payee_company: proposal.vendor_name,
     payee_name:
@@ -109,9 +121,9 @@ function applyProposalToExpenditureForm(
     payment_method: proposal.payment_method,
     vendor_business_number: proposal.vendor_business_number,
     evidence_type: current?.evidence_type ?? "card_payment",
-    supply_amount: proposal.supply_amount || proposal.total_amount,
+    supply_amount: proposal.supply_amount || proposalAmount,
     vat_amount: proposal.vat_amount,
-    eligible_amount: proposal.eligible_amount || proposal.total_amount,
+    eligible_amount: proposal.eligible_amount || proposalAmount,
     attendee_count: current?.attendee_count ?? 0,
     unit_amount: current?.unit_amount ?? 0,
     evidence_checklist: checklist,
@@ -236,9 +248,9 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
     const withholdingAmount = form.vat_amount;
     const grossAmount = form.eligible_amount || mergeWithholdingAmount(netAmount, withholdingAmount);
 
-    return {
+    return withResolvedExpenditureAmount({
       ...form,
-      total_amount: totalAmount,
+      total_amount: totalAmount || grossAmount,
       supply_amount: netAmount,
       vat_amount: withholdingAmount,
       eligible_amount: grossAmount,
@@ -249,7 +261,7 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
           form.evidence_checklist.includes(key as ExpenditureInput["evidence_checklist"][number]),
         ),
       ) as ExpenditureInput["evidence_completion"],
-    };
+    });
   }
 
   const fallbackFromEligible = form.eligible_amount
@@ -259,18 +271,16 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
     : form.vat_excluded
       ? { supplyAmount: totalAmount, vatAmount: 0 }
       : splitVatFromTotal(totalAmount);
-  return {
+  const supplyAmount = form.supply_amount || fallbackFromEligible.supplyAmount;
+  const vatAmount = form.vat_amount || fallbackFromEligible.vatAmount;
+  const eligibleAmount = form.eligible_amount || mergeEligibleAmount(supplyAmount, vatAmount, form.vat_excluded);
+
+  return withResolvedExpenditureAmount({
     ...form,
-    total_amount: totalAmount,
-    supply_amount: form.supply_amount || fallbackFromEligible.supplyAmount,
-    vat_amount: form.vat_amount || fallbackFromEligible.vatAmount,
-    eligible_amount:
-      form.eligible_amount ||
-      mergeEligibleAmount(
-        form.supply_amount || fallbackFromEligible.supplyAmount,
-        form.vat_amount || fallbackFromEligible.vatAmount,
-        form.vat_excluded,
-      ),
+    total_amount: totalAmount || eligibleAmount,
+    supply_amount: supplyAmount,
+    vat_amount: vatAmount,
+    eligible_amount: eligibleAmount,
     doc_number: applyDocumentPrefix(form.doc_number, "expenditure", form.budget_scope, form.issue_date),
     evidence_checklist: form.evidence_checklist,
     evidence_completion: Object.fromEntries(
@@ -278,7 +288,7 @@ function normalizePayload(form: ExpenditureInput, totalAmount: number): Expendit
         form.evidence_checklist.includes(key as ExpenditureInput["evidence_checklist"][number]),
       ),
     ) as ExpenditureInput["evidence_completion"],
-  };
+  });
 }
 
 export default function ExpenditureManager({ initialFromProposalId = null }: { initialFromProposalId?: string | null }) {
@@ -292,11 +302,19 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
   const [linkedProposalName, setLinkedProposalName] = useState("");
   const [linkedProposalDocNumber, setLinkedProposalDocNumber] = useState("");
   const [prefilledFromProposalId, setPrefilledFromProposalId] = useState<number | null>(null);
+  const [projectYouths, setProjectYouths] = useState<ProjectYouth[]>([]);
+  const [youthAllocations, setYouthAllocations] = useState<ExpenditureYouthAllocationInput[]>([]);
 
   const organizations = context.organizations;
   const projects = context.projects;
   const availableProjects = projects.filter((project) => (form.organization_id ? project.organization_id === form.organization_id : true));
   const totalAmount = useMemo(() => form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0), [form.items]);
+  const displayTotalAmount = resolveExpenditureAmount({ ...form, total_amount: totalAmount || form.total_amount });
+  const allocationTotal = useMemo(
+    () => youthAllocations.reduce((sum, allocation) => sum + Number(allocation.allocated_amount || 0), 0),
+    [youthAllocations],
+  );
+  const allocationTargetAmount = form.eligible_amount || displayTotalAmount;
   const requiresIdentityCopy = useMemo(
     () =>
       requiresRecipientIdentityCopy({
@@ -402,8 +420,9 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     if (amountMode === "vat" && form.vat_amount > 0 && !form.vat_excluded) next.push("환급 대상 부가세 제외 여부를 확인하세요.");
     if (!form.budget_category || !form.budget_item) next.push("비목과 세목이 비어 있습니다.");
     if (form.payment_method === "account_transfer" && requiresIdentityCopy) next.push("개인 강사·전문가 계좌이체 건은 신분증 사본과 통장사본을 함께 첨부하세요.");
+    if (form.budget_scope === "direct" && youthAllocations.length > 0 && allocationTotal !== allocationTargetAmount) next.push("청년별 안분 합계가 집행인정금액과 다릅니다.");
     return next;
-  }, [amountMode, form, requiresIdentityCopy]);
+  }, [allocationTargetAmount, allocationTotal, amountMode, form, requiresIdentityCopy, youthAllocations.length]);
 
   async function fetchList() {
     const [expenditureResponse, proposalResponse] = await Promise.all([
@@ -483,6 +502,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
         setForm(applyProposalToExpenditureForm(proposal));
         setLinkedProposalName(proposal.project_name);
         setLinkedProposalDocNumber(proposal.doc_number || "");
+        setYouthAllocations([]);
         setPrefilledFromProposalId(proposal.id);
         setOpen(true);
       });
@@ -491,10 +511,41 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     };
   }, [editingId, initialFromProposalId, prefilledFromProposalId]);
 
+  useEffect(() => {
+    if (!form.project_id) {
+      return;
+    }
+
+    let active = true;
+    fetch(`/api/projects/${form.project_id}/youths`)
+      .then((response) => response.json())
+      .then((data: ProjectYouth[]) => {
+        if (!active) return;
+        setProjectYouths(data);
+      })
+      .catch(() => {
+        if (active) setProjectYouths([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [form.project_id]);
+
   async function openForEdit(id: number) {
     const response = await fetch(`/api/expenditures/${id}`);
     const data = await response.json();
+    const allocationResponse = await fetch(`/api/expenditures/${id}/youth-allocations`);
+    const allocations = await allocationResponse.json();
     setEditingId(id);
+    setYouthAllocations(
+      (allocations as ExpenditureYouthAllocationInput[]).map((allocation) => ({
+        youth_id: Number(allocation.youth_id),
+        allocation_kind: allocation.allocation_kind === "relief" ? "relief" : "main",
+        allocated_amount: Number(allocation.allocated_amount || 0),
+        allocation_note: allocation.allocation_note || "",
+      })),
+    );
     if (data.proposal_id) {
       try {
         const proposalResponse = await fetch(`/api/proposals/${data.proposal_id}`);
@@ -528,14 +579,34 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       window.alert("필수 증빙 완료 체크가 남아 있습니다.");
       return;
     }
-    await fetch(editingId ? `/api/expenditures/${editingId}` : "/api/expenditures", {
+    if (
+      status === "finalized" &&
+      form.budget_scope === "direct" &&
+      youthAllocations.length > 0 &&
+      allocationTotal !== allocationTargetAmount
+    ) {
+      window.alert("청년별 안분 합계가 집행인정금액과 일치해야 완료 저장할 수 있습니다.");
+      return;
+    }
+    const response = await fetch(editingId ? `/api/expenditures/${editingId}` : "/api/expenditures", {
       method: editingId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(normalizePayload({ ...form, status }, totalAmount)),
     });
+    const saved = await response.json();
+    if (saved?.id) {
+      await fetch(`/api/expenditures/${saved.id}/youth-allocations`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          allocations: youthAllocations.filter((allocation) => allocation.youth_id && allocation.allocated_amount > 0),
+        }),
+      });
+    }
     setOpen(false);
     setEditingId(null);
     setForm(blankForm(organizations, projects));
+    setYouthAllocations([]);
     setLinkedProposalName("");
     setLinkedProposalDocNumber("");
     fetchList();
@@ -551,6 +622,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
     setEditingId(null);
     setLinkedProposalName("");
     setLinkedProposalDocNumber("");
+    setYouthAllocations([]);
     setForm(cloneExpenditureForReuse(source, organizations, projects));
     setOpen(true);
   }
@@ -575,6 +647,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       evidence_sheet: createEvidenceAttachmentSheet(project?.name ?? current.project_name),
       photo_sheet: createPhotoAttachmentSheet(project?.name ?? current.project_name),
     }));
+    setYouthAllocations([]);
   }
 
   function updateProject(id: number) {
@@ -590,6 +663,35 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
       evidence_sheet: createEvidenceAttachmentSheet(project?.name ?? current.project_name),
       photo_sheet: createPhotoAttachmentSheet(project?.name ?? current.project_name),
     }));
+    setYouthAllocations([]);
+  }
+
+  function addYouthAllocation() {
+    const usedYouthIds = new Set(youthAllocations.map((allocation) => allocation.youth_id));
+    const youth = projectYouths.find((item) => !usedYouthIds.has(item.id)) ?? projectYouths[0] ?? null;
+    const remainingAmount = Math.max(0, allocationTargetAmount - allocationTotal);
+
+    setYouthAllocations((current) => [
+      ...current,
+      {
+        youth_id: youth?.id ?? 0,
+        allocation_kind: "main",
+        allocated_amount: remainingAmount,
+        allocation_note: "",
+      },
+    ]);
+  }
+
+  function updateYouthAllocation(index: number, patch: Partial<ExpenditureYouthAllocationInput>) {
+    setYouthAllocations((current) =>
+      current.map((allocation, currentIndex) =>
+        currentIndex === index ? { ...allocation, ...patch } : allocation,
+      ),
+    );
+  }
+
+  function removeYouthAllocation(index: number) {
+    setYouthAllocations((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
   function toggleChecklist(key: ExpenditureInput["evidence_checklist"][number]) {
@@ -616,7 +718,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
           <p className="mt-2 max-w-2xl text-sm text-slate-600">실제 지급내역과 증빙 완료 상태를 함께 관리합니다.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button className="btn btn-primary" onClick={() => { setEditingId(null); setLinkedProposalName(""); setLinkedProposalDocNumber(""); setForm(blankForm(organizations, projects)); setOpen(true); }}>
+          <button className="btn btn-primary" onClick={() => { setEditingId(null); setLinkedProposalName(""); setLinkedProposalDocNumber(""); setYouthAllocations([]); setForm(blankForm(organizations, projects)); setOpen(true); }}>
             <Plus className="h-4 w-4" />새 결의서
           </button>
           {selected.length === 1 ? <button className="btn btn-secondary" onClick={duplicateSelected}><Plus className="h-4 w-4" />선택 1건 복제</button> : null}
@@ -630,7 +732,7 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
         ))}
       </section>
 
-      <section className="panel overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">선택</th><th className="px-4 py-3">사업</th><th className="px-4 py-3">예산항목</th><th className="px-4 py-3">지급방법</th><th className="px-4 py-3">증빙</th><th className="px-4 py-3 text-right">금액</th><th className="px-4 py-3">상태</th><th className="px-4 py-3">액션</th></tr></thead><tbody>{items.map((item) => { const pending = item.evidence_checklist.filter((key) => !item.evidence_completion[key]).length; const linkedProposalDocNumber = item.proposal_id ? proposalDocNumberMap[item.proposal_id] || `#${item.proposal_id}` : "없음"; return <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><input type="checkbox" checked={selected.includes(item.id)} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} /></td><td className="px-4 py-3"><div className="font-medium">{item.project_name}</div><div className="mt-1 text-xs text-slate-500">품의 {linkedProposalDocNumber}</div></td><td className="px-4 py-3"><div>{item.budget_category || "-"}</div><div className="mt-1 text-xs text-slate-500">{budgetScopeLabel(item.budget_scope)} / {item.budget_item || "-"}</div></td><td className="px-4 py-3">{paymentMethodLabel(item.payment_method)}</td><td className="px-4 py-3"><div className="text-xs text-slate-600">첨부 {countFilledEvidenceItems(item.evidence_sheet)} / 사진 {countFilledPhotoItems(item.photo_sheet)}</div><div className={`mt-1 text-xs ${pending ? "text-amber-600" : "text-emerald-600"}`}>{pending ? `${pending}개 미완료` : "체크 완료"}</div></td><td className="px-4 py-3 text-right">{formatCurrency(item.total_amount)}원</td><td className="px-4 py-3"><span className={`badge ${item.status === "finalized" ? "badge-finalized" : "badge-draft"}`}>{item.status === "finalized" ? "완료" : "작성중"}</span></td><td className="px-4 py-3"><div className="flex gap-2"><Link className="btn btn-secondary !px-3 !py-2" href={`/preview/${item.id}`} target="_blank"><Eye className="h-4 w-4" /></Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/evidence`}>증빙</Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/photos`}>사진</Link><button className="btn btn-secondary !px-3 !py-2" onClick={() => duplicateExpenditure(item)}>복제</button><button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>수정</button><button className="btn btn-danger !px-3 !py-2" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4" /></button></div></td></tr>; })}</tbody></table></div></section>
+      <section className="panel overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">선택</th><th className="px-4 py-3">사업</th><th className="px-4 py-3">예산항목</th><th className="px-4 py-3">지급방법</th><th className="px-4 py-3">증빙</th><th className="px-4 py-3 text-right">금액</th><th className="px-4 py-3">상태</th><th className="px-4 py-3">액션</th></tr></thead><tbody>{items.map((item) => { const pending = item.evidence_checklist.filter((key) => !item.evidence_completion[key]).length; const linkedProposalDocNumber = item.proposal_id ? proposalDocNumberMap[item.proposal_id] || `#${item.proposal_id}` : "없음"; return <tr key={item.id} className="border-t border-slate-100"><td className="px-4 py-3"><input type="checkbox" checked={selected.includes(item.id)} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} /></td><td className="px-4 py-3"><div className="font-medium">{item.project_name}</div><div className="mt-1 text-xs text-slate-500">품의 {linkedProposalDocNumber}</div></td><td className="px-4 py-3"><div>{item.budget_category || "-"}</div><div className="mt-1 text-xs text-slate-500">{budgetScopeLabel(item.budget_scope)} / {item.budget_item || "-"}</div></td><td className="px-4 py-3">{paymentMethodLabel(item.payment_method)}</td><td className="px-4 py-3"><div className="text-xs text-slate-600">첨부 {countFilledEvidenceItems(item.evidence_sheet)} / 사진 {countFilledPhotoItems(item.photo_sheet)}</div><div className={`mt-1 text-xs ${pending ? "text-amber-600" : "text-emerald-600"}`}>{pending ? `${pending}개 미완료` : "체크 완료"}</div></td><td className="px-4 py-3 text-right">{formatCurrency(resolveExpenditureAmount(item))}원</td><td className="px-4 py-3"><span className={`badge ${item.status === "finalized" ? "badge-finalized" : "badge-draft"}`}>{item.status === "finalized" ? "완료" : "작성중"}</span></td><td className="px-4 py-3"><div className="flex gap-2"><Link className="btn btn-secondary !px-3 !py-2" href={`/preview/${item.id}`} target="_blank"><Eye className="h-4 w-4" /></Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/evidence`}>증빙</Link><Link className="btn btn-secondary !px-3 !py-2" href={`/expenditures/${item.id}/photos`}>사진</Link><button className="btn btn-secondary !px-3 !py-2" onClick={() => duplicateExpenditure(item)}>복제</button><button className="btn btn-secondary !px-3 !py-2" onClick={() => openForEdit(item.id)}>수정</button><button className="btn btn-danger !px-3 !py-2" onClick={() => remove(item.id)}><Trash2 className="h-4 w-4" /></button></div></td></tr>; })}</tbody></table></div></section>
 
       {open ? <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/45 p-4"><div className="panel max-h-[92vh] w-full max-w-6xl overflow-y-auto px-6 py-6"><div className="mb-6 flex items-center justify-between"><div><div className="text-sm text-slate-500">지출결의서</div><h2 className="text-2xl font-semibold">{editingId ? "결의서 수정" : "새 결의서 작성"}</h2>{form.proposal_id ? <p className="mt-2 text-sm text-teal-700">연결 품의서 {linkedProposalDocNumber || `#${form.proposal_id}`}{linkedProposalName ? ` · ${linkedProposalName}` : ""}</p> : null}</div><div className="flex items-center gap-2">{form.proposal_id ? <button className="btn btn-secondary" onClick={() => refillFromLinkedProposal(form.proposal_id!)}>품의 내용 다시 불러오기</button> : null}<button className="btn btn-secondary" onClick={() => setOpen(false)}>닫기</button></div></div>
 
@@ -666,7 +768,111 @@ export default function ExpenditureManager({ initialFromProposalId = null }: { i
         </div>
 
         <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-200"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-3">적요</th><th className="px-3 py-3">금액</th><th className="px-3 py-3">비고</th><th className="px-3 py-3">삭제</th></tr></thead><tbody>{form.items.map((item, index) => <tr key={index} className="border-t border-slate-100"><td className="px-2 py-2"><input className="field" value={item.description} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], description: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><CurrencyInput className="field" value={item.amount} onChange={(value) => { const next = [...form.items]; next[index] = { ...next[index], amount: value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2"><input className="field" value={item.note} onChange={(event) => { const next = [...form.items]; next[index] = { ...next[index], note: event.target.value }; setForm({ ...form, items: next }); }} /></td><td className="px-2 py-2 text-center"><button className="btn btn-danger !px-3 !py-2" onClick={() => setForm({ ...form, items: form.items.length === 1 ? [emptyItem()] : form.items.filter((_, i) => i !== index) })}>삭제</button></td></tr>)}</tbody></table></div>
-        <div className="mt-3 flex items-center justify-between"><button className="btn btn-secondary" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}>행 추가</button><div className="text-sm font-semibold text-slate-700">합계 {formatCurrency(totalAmount)}원</div></div>
+        <div className="mt-3 flex items-center justify-between"><button className="btn btn-secondary" onClick={() => setForm({ ...form, items: [...form.items, emptyItem()] })}>행 추가</button><div className="text-sm font-semibold text-slate-700">합계 {formatCurrency(displayTotalAmount)}원</div></div>
+
+        <div className="mt-6 rounded-3xl border border-slate-200 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">청년별 안분</div>
+              <div className="mt-1 text-xs text-slate-500">직접비 지출을 청년별 한도에 연결합니다.</div>
+            </div>
+            <button className="btn btn-secondary !px-3 !py-2" onClick={addYouthAllocation}>
+              청년 추가
+            </button>
+          </div>
+          {projectYouths.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">청년</th>
+                    <th className="px-3 py-2">구분</th>
+                    <th className="px-3 py-2">안분금액</th>
+                    <th className="px-3 py-2">근거</th>
+                    <th className="px-3 py-2">삭제</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {youthAllocations.length ? (
+                    youthAllocations.map((allocation, index) => (
+                      <tr key={index} className="border-t border-slate-100">
+                        <td className="px-2 py-2">
+                          <select
+                            className="select"
+                            value={allocation.youth_id || ""}
+                            onChange={(event) =>
+                              updateYouthAllocation(index, { youth_id: Number(event.target.value) })
+                            }
+                          >
+                            <option value="">청년 선택</option>
+                            {projectYouths.map((youth) => (
+                              <option key={youth.id} value={youth.id}>
+                                {youth.serial_no}. {youth.display_name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <select
+                            className="select"
+                            value={allocation.allocation_kind}
+                            onChange={(event) =>
+                              updateYouthAllocation(index, {
+                                allocation_kind:
+                                  event.target.value === "relief" ? "relief" : "main",
+                              })
+                            }
+                          >
+                            <option value="main">주 예산</option>
+                            <option value="relief">애로사항</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <CurrencyInput
+                            className="field"
+                            value={allocation.allocated_amount}
+                            onChange={(value) => updateYouthAllocation(index, { allocated_amount: value })}
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            className="field"
+                            value={allocation.allocation_note}
+                            onChange={(event) =>
+                              updateYouthAllocation(index, { allocation_note: event.target.value })
+                            }
+                            placeholder="예: 3명 공동 1/3"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <button className="btn btn-danger !px-3 !py-2" onClick={() => removeYouthAllocation(index)}>
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="px-3 py-6 text-center text-slate-500" colSpan={5}>
+                        직접비인 경우 청년 추가 버튼으로 안분 내역을 입력하세요.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-500">
+              이 사업에 등록된 참여청년이 없습니다. 참여청년 관리 화면에서 명단을 먼저 등록하세요.
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div className={allocationTotal === allocationTargetAmount ? "text-emerald-700" : "text-amber-700"}>
+              안분 합계 {formatCurrency(allocationTotal)}원 / 기준 {formatCurrency(allocationTargetAmount)}원
+            </div>
+            <span className="text-xs text-slate-500">참여청년 명단은 20명 등록 완료 상태입니다.</span>
+          </div>
+        </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <EvidenceChecklistSelector title="필수 증빙 체크리스트" description="결의 단계에서 실제로 챙겨야 할 기본 증빙입니다." selected={displayEvidenceChecklist} onToggle={toggleChecklist} />

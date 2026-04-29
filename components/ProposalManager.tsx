@@ -21,6 +21,7 @@ import {
   paymentMethodOptions,
   requiresRecipientIdentityCopy,
 } from "@/lib/guideline";
+import { resolveProposalAmount, withResolvedProposalAmount } from "@/lib/proposal-amount";
 import type { Organization, Project, Proposal, ProposalInput, ProposalItem } from "@/lib/types";
 
 type ContextPayload = {
@@ -98,30 +99,30 @@ function normalizeProposalPayload(form: ProposalInput, totalAmount: number): Pro
     const withholdingAmount = form.vat_amount;
     const grossAmount = form.eligible_amount || mergeWithholdingAmount(netAmount, withholdingAmount);
 
-    return {
+    return withResolvedProposalAmount({
       ...form,
-      total_amount: totalAmount,
+      total_amount: totalAmount || grossAmount,
       supply_amount: netAmount,
       vat_amount: withholdingAmount,
       eligible_amount: grossAmount,
       evidence_checklist: form.evidence_checklist,
       doc_number: applyDocumentPrefix(form.doc_number, "proposal", form.budget_scope, form.submission_date),
-    };
+    });
   }
 
   const fallbackFromEligible = form.eligible_amount ? splitVatFromTotal(form.eligible_amount) : splitVatFromTotal(totalAmount);
   const supplyAmount = form.supply_amount || fallbackFromEligible.supplyAmount;
   const vatAmount = form.vat_amount || fallbackFromEligible.vatAmount;
   const eligibleAmount = form.eligible_amount || mergeEligibleAmount(supplyAmount, vatAmount);
-  return {
+  return withResolvedProposalAmount({
     ...form,
-    total_amount: totalAmount,
+    total_amount: totalAmount || eligibleAmount,
     supply_amount: supplyAmount,
     vat_amount: vatAmount,
     eligible_amount: eligibleAmount,
     evidence_checklist: form.evidence_checklist,
     doc_number: applyDocumentPrefix(form.doc_number, "proposal", form.budget_scope, form.submission_date),
-  };
+  });
 }
 
 export default function ProposalManager() {
@@ -470,7 +471,7 @@ export default function ProposalManager() {
                     </div>
                   </td>
                   <td className="px-4 py-3">{paymentMethodLabel(item.payment_method)}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(item.total_amount)}원</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(resolveProposalAmount(item))}원</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
                       <span className={`badge ${item.status === "finalized" ? "badge-finalized" : "badge-draft"}`}>
@@ -486,7 +487,7 @@ export default function ProposalManager() {
                       <Link className="btn btn-secondary !px-3 !py-2" href={`/proposals/preview/${item.id}`} target="_blank">
                         <Eye className="h-4 w-4" />
                       </Link>
-                      <Link className="btn btn-primary !px-3 !py-2" href={`/?fromProposalId=${item.id}`}>
+                      <Link className="btn btn-primary !px-3 !py-2" href={`/expenditures?fromProposalId=${item.id}`}>
                         <ArrowRightLeft className="h-4 w-4" />
                         결의서 작성
                       </Link>

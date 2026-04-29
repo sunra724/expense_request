@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import { countFilledEvidenceItems, evidenceTypeLabel } from "@/lib/attachment-sheets";
+import { resolveExpenditureAmount } from "@/lib/expenditure-amount";
 import { formatCurrency } from "@/lib/format";
 import type { EvidenceAttachmentSheet, Expenditure } from "@/lib/types";
 
@@ -19,6 +20,7 @@ export default function EvidenceSheetPrint({
   sheet: EvidenceAttachmentSheet;
 }) {
   const totalAmount = sheet.items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const expenditureAmount = resolveExpenditureAmount(expenditure);
 
   return (
     <div className="print-sheet">
@@ -30,7 +32,7 @@ export default function EvidenceSheetPrint({
       <section className="mb-5 grid grid-cols-2 gap-4 rounded-2xl border border-slate-200 p-4 text-sm">
         <div>결의서 번호: {expenditure.doc_number || `#${expenditure.id}`}</div>
         <div>사업명: {expenditure.project_name || "-"}</div>
-        <div>결의 금액: {formatCurrency(expenditure.total_amount)}원</div>
+        <div>결의 금액: {formatCurrency(expenditureAmount)}원</div>
         <div>증빙 합계: {formatCurrency(totalAmount)}원</div>
         <div>증빙 건수: {countFilledEvidenceItems(sheet)}건</div>
       </section>

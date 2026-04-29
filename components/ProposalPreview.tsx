@@ -3,6 +3,7 @@ import { getAmountFieldLabels, getAmountPresentationMode } from "@/lib/amount-pr
 import { budgetScopeLabel, evidenceChecklistLabel, paymentMethodLabel } from "@/lib/guideline";
 import { formatCurrency } from "@/lib/format";
 import { numberToKorean } from "@/lib/numberToKorean";
+import { resolveProposalAmount, resolveProposalItemAmount } from "@/lib/proposal-amount";
 import type { Proposal, StampSettings } from "@/lib/types";
 
 const fundLabels = {
@@ -49,6 +50,7 @@ export default function ProposalPreview({
     expenseCategory: proposal.items.map((item) => item.expense_category).join(" "),
   });
   const amountLabels = getAmountFieldLabels(amountMode);
+  const displayTotalAmount = resolveProposalAmount(proposal);
 
   return (
     <div className="print-sheet">
@@ -72,7 +74,7 @@ export default function ProposalPreview({
             </div>
             <div>지급방법: {paymentMethodLabel(proposal.payment_method)}</div>
             <div>
-              예정금액: {formatCurrency(proposal.total_amount)}원 ({numberToKorean(proposal.total_amount)}원)
+              예정금액: {formatCurrency(displayTotalAmount)}원 ({numberToKorean(displayTotalAmount)}원)
             </div>
           </div>
         </section>
@@ -102,7 +104,7 @@ export default function ProposalPreview({
                 <td className="border border-slate-200 px-3 py-2">{item.expense_category}</td>
                 <td className="border border-slate-200 px-3 py-2">{item.description}</td>
                 <td className="border border-slate-200 px-3 py-2 text-right">
-                  {formatCurrency(item.estimated_amount)}원
+                  {formatCurrency(resolveProposalItemAmount(item, proposal))}원
                 </td>
                 <td className="border border-slate-200 px-3 py-2">{item.calculation_basis}</td>
                 <td className="border border-slate-200 px-3 py-2">{item.note}</td>
@@ -113,7 +115,7 @@ export default function ProposalPreview({
                 합계
               </td>
               <td className="border border-slate-200 px-3 py-2 text-right font-semibold">
-                {formatCurrency(proposal.total_amount)}원
+                {formatCurrency(displayTotalAmount)}원
               </td>
               <td colSpan={2} className="border border-slate-200 px-3 py-2" />
             </tr>

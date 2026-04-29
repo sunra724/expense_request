@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { getAmountFieldLabels, getAmountPresentationMode } from "@/lib/amount-presentation";
 import { countFilledEvidenceItems, countFilledPhotoItems } from "@/lib/attachment-sheets";
+import { resolveExpenditureAmount, resolveExpenditureItemAmount } from "@/lib/expenditure-amount";
 import { formatCurrency } from "@/lib/format";
 import {
   budgetScopeLabel,
@@ -53,6 +54,7 @@ export default function ExpenditurePreview({
     expenseCategory: expenditure.expense_category,
   });
   const amountLabels = getAmountFieldLabels(amountMode);
+  const displayTotalAmount = resolveExpenditureAmount(expenditure);
 
   return (
     <div className="print-sheet">
@@ -72,7 +74,7 @@ export default function ExpenditurePreview({
             <div>회계기록일: {expenditure.record_date || "-"}</div>
             <div>지급방법: {paymentMethodLabel(expenditure.payment_method)}</div>
             <div>증빙유형: {evidenceTypeLabel(expenditure.evidence_type)}</div>
-            <div>총금액: {formatCurrency(expenditure.total_amount)}원</div>
+            <div>총금액: {formatCurrency(displayTotalAmount)}원</div>
           </div>
         </section>
 
@@ -120,7 +122,7 @@ export default function ExpenditurePreview({
                 <td className="border border-slate-200 px-3 py-2 text-center">{index + 1}</td>
                 <td className="border border-slate-200 px-3 py-2">{item.description}</td>
                 <td className="border border-slate-200 px-3 py-2 text-right">
-                  {formatCurrency(item.amount)}원
+                  {formatCurrency(resolveExpenditureItemAmount(item, expenditure))}원
                 </td>
                 <td className="border border-slate-200 px-3 py-2">{item.note}</td>
               </tr>
@@ -130,7 +132,7 @@ export default function ExpenditurePreview({
                 합계
               </td>
               <td className="border border-slate-200 px-3 py-2 text-right font-semibold">
-                {formatCurrency(expenditure.total_amount)}원
+                {formatCurrency(displayTotalAmount)}원
               </td>
               <td className="border border-slate-200 px-3 py-2" />
             </tr>
