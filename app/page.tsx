@@ -6,6 +6,8 @@ import { getDadareumDashboard } from "@/lib/db/dadareum";
 import { listProjects } from "@/lib/db/organizations";
 import { formatCurrency } from "@/lib/format";
 
+export const dynamic = "force-dynamic";
+
 function formatRate(value: number, total: number) {
   if (!total) return 0;
   return Math.round((value / total) * 1000) / 10;
