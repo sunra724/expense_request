@@ -5,7 +5,7 @@ export function getAppUrl() {
 }
 
 export function getAdminEmails() {
-  return (process.env.ADMIN_EMAILS || "")
+  return (process.env.ADMIN_EMAILS || process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
     .split(/[,\s]+/)
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
@@ -29,7 +29,9 @@ export function getMissingAuthConfigKeys() {
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) missing.push("NEXT_PUBLIC_SUPABASE_URL");
   if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  if (!process.env.ADMIN_EMAILS) missing.push("ADMIN_EMAILS");
+  if (!process.env.ADMIN_EMAILS && !process.env.NEXT_PUBLIC_ADMIN_EMAILS) {
+    missing.push("ADMIN_EMAILS or NEXT_PUBLIC_ADMIN_EMAILS");
+  }
 
   return missing;
 }
