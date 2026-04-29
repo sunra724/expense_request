@@ -36,6 +36,7 @@ npm run dev
 `.env.local` 파일을 만들고 아래 값을 설정합니다. 실제 키와 비공개 iCal 주소는 Git에 커밋하지 않습니다.
 
 ```bash
+NEXT_PUBLIC_APP_URL=https://dadareum.soilab-youth.kr
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -67,11 +68,35 @@ Supabase SQL Editor에서 `supabase/schema.sql` 내용을 실행합니다.
 Railway에서 필요한 핵심 환경변수:
 
 ```bash
+NEXT_PUBLIC_APP_URL=https://dadareum.soilab-youth.kr
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 GOOGLE_CALENDAR_ICAL_URL=
 GOOGLE_CALENDAR_NAME=2026년 청년 다다름 사업
+```
+
+## 운영 도메인
+
+공식 운영 주소는 아래 도메인을 사용합니다.
+
+```text
+https://dadareum.soilab-youth.kr
+```
+
+Railway에서 연결 순서:
+
+1. Railway 서비스 `Settings` > `Networking` 또는 `Public Networking`에서 `Custom Domain`을 추가합니다.
+2. 도메인에 `dadareum.soilab-youth.kr`을 입력합니다.
+3. Railway가 보여주는 `CNAME` 레코드와 `TXT` 검증 레코드를 DNS 관리 화면에 그대로 추가합니다.
+4. DNS 전파와 Railway 검증이 끝나면 SSL 인증서가 자동 발급됩니다.
+
+DNS에는 보통 아래 형태로 들어갑니다. 실제 값은 Railway가 보여주는 값을 우선합니다.
+
+```text
+Type   Name       Value
+CNAME  dadareum   Railway가 제공한 *.up.railway.app 값
+TXT    Railway가 제공한 검증용 Name   Railway가 제공한 검증용 Value
 ```
 
 ## 저장소/서비스 이름 변경

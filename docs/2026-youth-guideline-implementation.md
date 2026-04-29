@@ -1,8 +1,8 @@
-# 2026 청년다다름사업 지침 반영 초안
+# 2026 청년 다다름 사업 지침 반영 초안
 
 ## 목적
 
-이 문서는 `2026년 청년다다름사업 운영지침(사업비 예산편성 및 집행 지침)`을 현재
+이 문서는 `2026년 청년 다다름 사업 운영지침(사업비 예산편성 및 집행 지침)`을 현재
 지출품의서/지출결의서/회계관리 앱에 반영하기 위한 1차 설계 초안이다.
 
 이번 단계의 목표는 세 가지다.
@@ -226,7 +226,7 @@
 
 ## DB 변경 방향
 
-상세 초안은 [supabase/2026-youth-guideline-draft.sql](C:/Users/이형구/Downloads/disbursement-system/supabase/2026-youth-guideline-draft.sql)에 정리한다.
+상세 초안은 [supabase/2026-youth-guideline-draft.sql](../supabase/2026-youth-guideline-draft.sql)에 정리한다.
 
 핵심 구조는 아래와 같다.
 

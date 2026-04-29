@@ -151,7 +151,7 @@ values (
 on conflict (slug) do nothing;
 
 insert into projects (organization_id, code, name, starts_on, ends_on, direct_budget_total, indirect_budget_total)
-select id, 'dadareum-2026', '2026 청년다다름사업', '2026-01-01', '2026-12-31', 48000000, 31500000
+select id, 'dadareum-2026', '2026년 청년 다다름 사업', '2026-01-01', '2026-12-31', 48000000, 31500000
 from organizations
 where slug = 'youth-foundation'
 on conflict (organization_id, code) do update
