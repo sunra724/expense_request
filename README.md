@@ -76,22 +76,22 @@ GOOGLE_CALENDAR_NAME=2026년 청년 다다름 사업
 
 ## 저장소/서비스 이름 변경
 
-기존 `expense_request` 이름은 현재 시스템 범위와 맞지 않으므로 아래처럼 바꾸는 것을 권장합니다.
+기존 `expense_request` 이름은 현재 시스템 범위와 맞지 않으므로 저장소와 배포 서비스 이름을 사업명 기준으로 맞춥니다.
 
-추천 저장소 이름:
+현재 GitHub 저장소 이름:
 
 ```text
-soilab-dadareum-2026
+dadareum-management-system
 ```
 
-GitHub에서 저장소 이름을 바꾼 뒤 로컬 remote도 변경합니다.
+로컬 remote는 아래 주소를 사용합니다.
 
 ```powershell
-git remote set-url origin https://github.com/sunra724/soilab-dadareum-2026.git
+git remote set-url origin https://github.com/sunra724/dadareum-management-system.git
 git remote -v
 ```
 
-Railway 프로젝트/서비스 이름도 `청년 다다름 사업 관리 시스템` 또는 `soilab-dadareum-2026`으로 맞추면 운영 중 혼동을 줄일 수 있습니다.
+Railway 프로젝트/서비스 이름도 `청년 다다름 사업 관리 시스템` 또는 `dadareum-management-system`으로 맞추면 운영 중 혼동을 줄일 수 있습니다.
 
 ## 운영 규칙
 
