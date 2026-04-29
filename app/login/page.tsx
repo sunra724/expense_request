@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import LoginForm from "@/components/LoginForm";
-import { hasAdminAuthConfig, hasSupabaseAuthEnv, isAdminEmail, sanitizeRedirectPath } from "@/lib/auth";
+import { getMissingAuthConfigKeys, isAdminEmail, sanitizeRedirectPath } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export default async function LoginPage({
@@ -11,7 +11,8 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const nextPath = sanitizeRedirectPath(params.next);
-  const authConfigured = hasSupabaseAuthEnv() && hasAdminAuthConfig();
+  const missingConfigKeys = getMissingAuthConfigKeys();
+  const authConfigured = missingConfigKeys.length === 0;
 
   if (authConfigured) {
     const supabase = await createSupabaseServerClient();
@@ -43,7 +44,8 @@ export default async function LoginPage({
 
         {!authConfigured ? (
           <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-            Railway Variables에 Supabase Auth 환경변수와 <code>ADMIN_EMAILS</code>를 설정해야 로그인을 사용할 수 있습니다.
+            Railway 실행 환경에서 아래 변수가 읽히지 않습니다.
+            <div className="mt-2 font-mono text-xs">{missingConfigKeys.join(", ")}</div>
           </div>
         ) : null}
 

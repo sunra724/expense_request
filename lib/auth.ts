@@ -24,6 +24,16 @@ export function hasAdminAuthConfig() {
   return hasSupabaseAuthEnv() && getAdminEmails().length > 0;
 }
 
+export function getMissingAuthConfigKeys() {
+  const missing: string[] = [];
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  if (!process.env.ADMIN_EMAILS) missing.push("ADMIN_EMAILS");
+
+  return missing;
+}
+
 export function sanitizeRedirectPath(value: string | null | undefined, fallback = "/") {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
   return value;
