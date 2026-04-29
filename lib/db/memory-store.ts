@@ -55,7 +55,7 @@ let projects: Project[] = [
     id: 1,
     organization_id: 1,
     code: "dadareum-2026",
-    name: "2026 청년다다름사업",
+    name: "2026년 청년 다다름 사업",
     starts_on: "2026-01-01",
     ends_on: "2026-12-31",
     guideline_code: "youth-dadareum-2026",
@@ -83,7 +83,7 @@ let proposals: Proposal[] = [
     id: 1,
     doc_number: "다다름-직접-품의-26-001",
     fund_type: "grant",
-    project_name: "2026 청년다다름사업",
+    project_name: "2026년 청년 다다름 사업",
     project_period: "2026-01-01 ~ 2026-12-31",
     total_amount: 950000,
     related_plan: "사업 운영 계획서 1부",
@@ -124,7 +124,7 @@ let expenditures: Expenditure[] = [
     id: 1,
     proposal_id: 1,
     doc_number: "다다름-직접-결의-26-001",
-    project_name: "2026 청년다다름사업",
+    project_name: "2026년 청년 다다름 사업",
     expense_category: "운영비",
     issue_date: today(),
     record_date: today(),
@@ -139,7 +139,7 @@ let expenditures: Expenditure[] = [
       { description: "회의 식비", amount: 300000, note: "" },
     ],
     evidence_sheet: {
-      title: "2026 청년다다름사업 증빙서류 첨부지",
+      title: "2026년 청년 다다름 사업 증빙서류 첨부지",
       submission_note: "카드전표와 간이영수증을 함께 보관합니다.",
       items: [
         {
@@ -159,7 +159,7 @@ let expenditures: Expenditure[] = [
       ],
     },
     photo_sheet: {
-      title: "2026 청년다다름사업 증빙사진 첨부지",
+      title: "2026년 청년 다다름 사업 증빙사진 첨부지",
       submission_note: "행사 진행 사진을 순서대로 첨부합니다.",
       items: [
         {

@@ -751,7 +751,7 @@ function buildAlerts(
     alerts.push({
       id: "project-missing",
       title: "사업 정보가 없습니다",
-      description: "청년다다름사업 프로젝트를 먼저 등록해야 합니다.",
+      description: "청년 다다름 사업 프로젝트를 먼저 등록해야 합니다.",
       severity: "blocking",
     });
   }
