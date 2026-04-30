@@ -203,8 +203,13 @@ function isSameSeoulDay(a: Date, b: Date) {
 }
 
 export async function getCalendarAgenda(): Promise<CalendarAgenda> {
-  const calendarUrl = process.env["GOOGLE_CALENDAR_ICAL_URL"] || process.env["CALENDAR_ICAL_URL"];
-  const calendarName = process.env["GOOGLE_CALENDAR_NAME"] || "2026년 청년 다다름 사업";
+  const calendarUrl = (
+    process.env["GOOGLE_CALENDAR_ICAL_URL"] ||
+    process.env["CALENDAR_ICAL_URL"] ||
+    process.env["NEXT_PUBLIC_GOOGLE_CALENDAR_ICAL_URL"] ||
+    ""
+  ).trim();
+  const calendarName = (process.env["GOOGLE_CALENDAR_NAME"] || "2026년 청년 다다름 사업").trim();
   const todayStart = startOfSeoulDay();
   const upcomingEnd = addDays(todayStart, UPCOMING_DAYS);
   const deadlineEnd = addDays(todayStart, DEADLINE_DAYS);
